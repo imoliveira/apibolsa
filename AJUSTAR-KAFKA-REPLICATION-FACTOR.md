@@ -250,3 +250,5 @@ oc rollout restart deployment/nodejs -n apibolsa
    ./diagnosticar-kafka.sh
    ```
 
+
+

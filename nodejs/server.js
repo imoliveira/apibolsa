@@ -811,7 +811,7 @@ app.get('/dashboard', requireAuth, (req, res) => {
 // Função para buscar dados reais do dólar do Investing.com
 async function fetchDollarFromInvesting() {
   try {
-    const url = 'https://br.investing.com/currencies/usd-brl';
+    const url = 'https://br.investing.com/currencies/streaming-forex-rates-majors';
     console.log('🌐 Buscando dados do dólar em:', url);
     
     const response = await axios.get(url, {
@@ -828,68 +828,254 @@ async function fetchDollarFromInvesting() {
     
     const $ = cheerio.load(response.data);
     
-    // Tentar encontrar o valor do dólar na página
+    // Tentar encontrar o valor do dólar na página (tabela de streaming)
     let lastValue = null;
     let variation = null;
     let percent = null;
     let maxValue = null;
     let minValue = null;
     
-    // Tentar seletores comuns do Investing.com
-    const selectors = [
-      '#last_last',
-      '[data-test="instrument-price-last"]',
-      '.text-2xl',
-      '.instrument-price_last__',
-      '#quotes_summary_current_data .text-2xl'
+    // Buscar USD/BRL na tabela de streaming
+    // Procurar por linhas da tabela que contenham USD/BRL ou Dólar/BRL
+    console.log('🔍 Procurando USD/BRL na tabela...');
+    
+    // Tentar diferentes seletores de tabela
+    const tableSelectors = [
+      'table#forex-rates',
+      'table.genTbl',
+      'table.genTbl.openTbl',
+      'table tbody',
+      'table',
+      '[data-test="forex-rates-table"]'
     ];
     
-    for (const selector of selectors) {
-      const element = $(selector).first();
-      if (element.length) {
-        const text = element.text().trim();
-        const match = text.match(/[\d,]+\.?\d*/);
-        if (match) {
-          lastValue = match[0].replace(/,/g, '');
+    let usdBrlRow = null;
+    
+    for (const tableSelector of tableSelectors) {
+      const table = $(tableSelector).first();
+      if (table.length) {
+        console.log(`📋 Tabela encontrada com seletor: ${tableSelector}`);
+        usdBrlRow = table.find('tr').filter((i, el) => {
+          const text = $(el).text().toUpperCase();
+          return text.includes('USD/BRL') || text.includes('USD BRL') || 
+                 text.includes('USDBRL') ||
+                 (text.includes('DÓLAR') && text.includes('BRL')) ||
+                 (text.includes('DOLLAR') && text.includes('BRL'));
+        }).first();
+        
+        if (usdBrlRow.length) {
+          console.log('✅ Linha USD/BRL encontrada!');
           break;
         }
       }
     }
     
-    // Buscar variação
-    const variationElement = $('[data-test="instrument-price-change"], .instrument-price_change__').first();
-    if (variationElement.length) {
-      const varText = variationElement.text().trim();
-      const varMatch = varText.match(/([+-]?[\d,]+\.?\d*)/);
-      if (varMatch) {
-        variation = varMatch[1].replace(/,/g, '');
+    // Se não encontrou, tentar buscar em todas as linhas
+    if (!usdBrlRow || !usdBrlRow.length) {
+      console.log('🔍 Buscando em todas as linhas da página...');
+      usdBrlRow = $('tr').filter((i, el) => {
+        const text = $(el).text().toUpperCase();
+        return text.includes('USD/BRL') || text.includes('USD BRL') || 
+               text.includes('USDBRL') ||
+               (text.includes('DÓLAR') && text.includes('BRL')) ||
+               (text.includes('DOLLAR') && text.includes('BRL'));
+      }).first();
+    }
+    
+    if (usdBrlRow && usdBrlRow.length) {
+      console.log('📊 Extraindo dados da linha...');
+      // Extrair dados da linha da tabela
+      const cells = usdBrlRow.find('td');
+      console.log(`📊 Número de células encontradas: ${cells.length}`);
+      
+      // Normalmente a estrutura é: Nome | Último | Variação | Var% | Máxima | Mínima | etc
+      // Tentar diferentes índices de colunas
+      const tryExtractValue = (index, name) => {
+        if (cells.length > index) {
+          const cell = cells.eq(index);
+          const text = cell.text().trim();
+          console.log(`  ${name} (coluna ${index}): "${text}"`);
+          const match = text.match(/[\d,]+\.?\d*/);
+          if (match) {
+            let value = match[0];
+            // Converter formato brasileiro para numérico
+            if (value.includes(',')) {
+              value = value.replace(/\./g, '').replace(',', '.');
+            } else {
+              value = value.replace(/,/g, '');
+            }
+            if (!isNaN(parseFloat(value))) {
+              return value;
+            }
+          }
+        }
+        return null;
+      };
+      
+      // Tentar diferentes posições para o último valor
+      for (let i = 1; i < Math.min(cells.length, 6); i++) {
+        const value = tryExtractValue(i, `Último (tentativa ${i})`);
+        if (value && parseFloat(value) > 1 && parseFloat(value) < 10) {
+          lastValue = value;
+          console.log(`✅ Último valor encontrado na coluna ${i}: ${lastValue}`);
+          break;
+        }
       }
       
-      // Buscar percentual
-      const percentMatch = varText.match(/([+-]?[\d,]+\.?\d*%)/);
-      if (percentMatch) {
-        percent = percentMatch[1];
+      // Buscar variação e percentual
+      for (let i = 2; i < Math.min(cells.length, 8); i++) {
+        const cell = cells.eq(i);
+        const text = cell.text().trim();
+        
+        // Verificar se contém variação
+        const varMatch = text.match(/([+-]?[\d,]+\.?\d*)/);
+        if (varMatch && !variation) {
+          let varValue = varMatch[1];
+          if (varValue.includes(',')) {
+            varValue = varValue.replace(/\./g, '').replace(',', '.');
+          } else {
+            varValue = varValue.replace(/,/g, '');
+          }
+          if (!isNaN(parseFloat(varValue))) {
+            variation = varValue;
+            console.log(`✅ Variação encontrada na coluna ${i}: ${variation}`);
+          }
+        }
+        
+        // Verificar se contém percentual
+        const percentMatch = text.match(/([+-]?[\d,]+\.?\d*%)/);
+        if (percentMatch && !percent) {
+          percent = percentMatch[1];
+          console.log(`✅ Percentual encontrado na coluna ${i}: ${percent}`);
+        }
+      }
+      
+      // Buscar máxima e mínima
+      for (let i = 4; i < Math.min(cells.length, 8); i++) {
+        const value = tryExtractValue(i, `Máx/Mín (tentativa ${i})`);
+        if (value && !maxValue && parseFloat(value) > parseFloat(lastValue || '0')) {
+          maxValue = value;
+          console.log(`✅ Máxima encontrada na coluna ${i}: ${maxValue}`);
+        } else if (value && !minValue && parseFloat(value) < parseFloat(lastValue || '999')) {
+          minValue = value;
+          console.log(`✅ Mínima encontrada na coluna ${i}: ${minValue}`);
+        }
+      }
+    } else {
+      console.log('⚠️  Linha USD/BRL não encontrada na tabela');
+    }
+    
+    // Se não encontrou na tabela, tentar seletores alternativos
+    if (!lastValue) {
+      const selectors = [
+        '[data-pair-code="USDBRL"]',
+        '[data-symbol="USDBRL"]',
+        '[id*="usdbrl"]',
+        '[id*="USDBRL"]',
+        '.pair_1',
+        '#pair_1'
+      ];
+      
+      for (const selector of selectors) {
+        const element = $(selector).first();
+        if (element.length) {
+          const text = element.text().trim();
+          const match = text.match(/[\d,]+\.?\d*/);
+          if (match) {
+            let value = match[0];
+            if (value.includes(',')) {
+              value = value.replace(/\./g, '').replace(',', '.');
+            } else {
+              value = value.replace(/,/g, '');
+            }
+            if (!isNaN(parseFloat(value))) {
+              lastValue = value;
+              break;
+            }
+          }
+        }
       }
     }
     
-    // Buscar máxima e mínima
-    const highElement = $('[data-test="high-value"], .high-low-value').first();
-    const lowElement = $('[data-test="low-value"], .high-low-value').last();
-    
-    if (highElement.length) {
-      const highText = highElement.text().trim();
-      const highMatch = highText.match(/[\d,]+\.?\d*/);
-      if (highMatch) {
-        maxValue = highMatch[0].replace(/,/g, '');
-      }
+    // Fallback: tentar buscar dados em scripts JavaScript
+    if (!lastValue) {
+      console.log('🔍 Buscando em scripts JavaScript...');
+      // Buscar em scripts que podem conter dados JSON
+      const scripts = $('script');
+      scripts.each((i, script) => {
+        try {
+          const scriptContent = $(script).html();
+          if (!scriptContent) return;
+          
+          // Procurar por USDBRL ou USD/BRL no script
+          if (scriptContent.includes('USDBRL') || scriptContent.includes('USD/BRL')) {
+            console.log('📜 Script com USDBRL encontrado');
+            
+            // Tentar extrair valor usando regex
+            const valueMatch = scriptContent.match(/USDBRL["\']?\s*[:=]\s*["\']?([\d,]+\.?\d*)/i);
+            if (valueMatch) {
+              let value = valueMatch[1];
+              if (value.includes(',')) {
+                value = value.replace(/\./g, '').replace(',', '.');
+              } else {
+                value = value.replace(/,/g, '');
+              }
+              if (!isNaN(parseFloat(value)) && parseFloat(value) > 1 && parseFloat(value) < 10) {
+                lastValue = value;
+                console.log(`✅ Valor encontrado no script: ${lastValue}`);
+                return false; // Parar iteração
+              }
+            }
+            
+            // Tentar parsear como JSON
+            try {
+              const jsonMatch = scriptContent.match(/\{[\s\S]*USDBRL[\s\S]*\}/i);
+              if (jsonMatch) {
+                const json = JSON.parse(jsonMatch[0]);
+                if (json.price || json.last || json.value) {
+                  let value = String(json.price || json.last || json.value);
+                  if (value.includes(',')) {
+                    value = value.replace(/\./g, '').replace(',', '.');
+                  }
+                  if (!isNaN(parseFloat(value)) && parseFloat(value) > 1 && parseFloat(value) < 10) {
+                    lastValue = value;
+                    console.log(`✅ Valor encontrado no JSON do script: ${lastValue}`);
+                    return false;
+                  }
+                }
+              }
+            } catch (e) {
+              // Ignorar erros de parsing JSON
+            }
+          }
+        } catch (e) {
+          // Ignorar erros
+        }
+      });
     }
     
-    if (lowElement.length) {
-      const lowText = lowElement.text().trim();
-      const lowMatch = lowText.match(/[\d,]+\.?\d*/);
-      if (lowMatch) {
-        minValue = lowMatch[0].replace(/,/g, '');
-      }
+    // Fallback: buscar em scripts JSON-LD
+    if (!lastValue) {
+      console.log('🔍 Buscando em scripts JSON-LD...');
+      const scripts = $('script[type="application/ld+json"]');
+      scripts.each((i, script) => {
+        try {
+          const json = JSON.parse($(script).html());
+          if (json.offers && json.offers.price) {
+            let value = String(json.offers.price).replace(/,/g, '');
+            if (value.includes(',')) {
+              value = value.replace(/\./g, '').replace(',', '.');
+            }
+            if (!isNaN(parseFloat(value)) && parseFloat(value) > 1 && parseFloat(value) < 10) {
+              lastValue = value;
+              console.log(`✅ Valor encontrado no JSON-LD: ${lastValue}`);
+              return false;
+            }
+          }
+        } catch (e) {
+          // Ignorar erros de parsing
+        }
+      });
     }
     
     if (lastValue) {
@@ -913,25 +1099,34 @@ async function fetchDollarFromInvesting() {
   }
 }
 
-// Cache para dados do dólar (atualizar a cada 30 segundos)
+// Cache para dados do dólar (atualizar a cada 10 segundos para testes)
 let dollarCache = null;
 let dollarCacheTime = null;
-const DOLLAR_CACHE_TTL = 30000; // 30 segundos
+const DOLLAR_CACHE_TTL = 10000; // 10 segundos (reduzido para forçar atualizações)
 
 async function getDollarData() {
   const now = Date.now();
   
   // Se o cache é válido, retornar
   if (dollarCache && dollarCacheTime && (now - dollarCacheTime) < DOLLAR_CACHE_TTL) {
+    console.log('💾 Retornando dados do dólar do cache');
     return dollarCache;
   }
   
+  console.log('🔄 Cache expirado ou inexistente, buscando novos dados do dólar...');
   // Buscar novos dados
   const dollarData = await fetchDollarFromInvesting();
   
   if (dollarData.success) {
+    console.log('✅ Dados do dólar atualizados no cache');
     dollarCache = dollarData;
     dollarCacheTime = now;
+  } else {
+    console.log('⚠️  Falha ao buscar dados do dólar, usando cache anterior se disponível');
+    // Se falhou mas tem cache antigo, usar ele
+    if (dollarCache) {
+      return dollarCache;
+    }
   }
   
   return dollarData;
@@ -1229,39 +1424,40 @@ function generateMockBrazilianReal() {
   const now = new Date();
   const timeStr = now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   
+  // Valores com 4-5 casas decimais como na CME Group
   return [
     {
       name: 'BRL/USD',
-      mes: 'Mar 26',
-      value: '0.2015',
-      max: '0.2020',
-      min: '0.2010',
-      variation: '+0.0005',
-      percent: '+0.25%',
-      volume: '1,234',
+      mes: 'FEB 26',
+      value: '0.1830',
+      max: '0.18335',
+      min: '0.1808',
+      variation: '0.0022',
+      percent: '+1.22%',
+      volume: '14,703',
       openInterest: '5,678',
       time: timeStr
     },
     {
       name: 'BRL/USD',
-      mes: 'Jun 26',
-      value: '0.2025',
-      max: '0.2030',
-      min: '0.2020',
-      variation: '+0.0010',
-      percent: '+0.50%',
-      volume: '2,345',
+      mes: 'MAR 26',
+      value: '0.18215',
+      max: '0.1822',
+      min: '0.1810',
+      variation: '0.0024',
+      percent: '+1.34%',
+      volume: '46',
       openInterest: '6,789',
       time: timeStr
     },
     {
       name: 'BRL/USD',
-      mes: 'Sep 26',
-      value: '0.2035',
-      max: '0.2040',
-      min: '0.2030',
-      variation: '+0.0015',
-      percent: '+0.74%',
+      mes: 'JUN 26',
+      value: '0.1815',
+      max: '0.1820',
+      min: '0.1805',
+      variation: '0.0015',
+      percent: '+0.83%',
       volume: '1,567',
       openInterest: '4,321',
       time: timeStr
@@ -1430,15 +1626,16 @@ function generateFinancialData() {
       { name: 'Austrália', value: '7850.00', variation: '+12.50', percent: '+0.16%', time: '01/01' }
     ],
     moedas: [
-      { name: 'Dólar', value: '5.1291', variation: '0.00', percent: '0.00%', time: '' },
-      { name: 'Euro', value: '5.5488', variation: '0.00', percent: '0.00%', time: '' },
-      { name: 'Índice Dólar DXY', value: '101.25', variation: '-0.15', percent: '-0.15%', time: '' },
-      { name: 'USD/EUR', value: '0.9150', variation: '-0.0010', percent: '-0.11%', time: '' },
-      { name: 'USD/JPY', value: '148.50', variation: '+0.25', percent: '+0.17%', time: '' },
-      { name: 'USD/GBP', value: '0.7850', variation: '+0.0010', percent: '+0.13%', time: '' },
-      { name: 'USD/CAD', value: '1.3450', variation: '+0.0025', percent: '+0.19%', time: '' },
-      { name: 'USD/SEK', value: '10.3750', variation: '+0.0125', percent: '+0.12%', time: '' },
-      { name: 'USD/CHF', value: '0.8750', variation: '-0.0010', percent: '-0.11%', time: '' }
+      // Dólar será atualizado com dados reais da URL
+      { name: 'Dólar', value: '5.1300', variation: '0.00', percent: '0.00%', max: '5.1300', min: '5.1300', time: '' },
+      { name: 'Euro', value: '5.5488', variation: '0.00', percent: '0.00%', max: '5.5488', min: '5.5488', time: '' },
+      { name: 'Índice Dólar DXY', value: '101.25', variation: '-0.15', percent: '-0.15%', max: '101.25', min: '101.25', time: '' },
+      { name: 'USD/EUR', value: '0.9150', variation: '-0.0010', percent: '-0.11%', max: '0.9150', min: '0.9150', time: '' },
+      { name: 'USD/JPY', value: '148.50', variation: '+0.25', percent: '+0.17%', max: '148.50', min: '148.50', time: '' },
+      { name: 'USD/GBP', value: '0.7850', variation: '+0.0010', percent: '+0.13%', max: '0.7850', min: '0.7850', time: '' },
+      { name: 'USD/CAD', value: '1.3450', variation: '+0.0025', percent: '+0.19%', max: '1.3450', min: '1.3450', time: '' },
+      { name: 'USD/SEK', value: '10.3750', variation: '+0.0125', percent: '+0.12%', max: '10.3750', min: '10.3750', time: '' },
+      { name: 'USD/CHF', value: '0.8750', variation: '-0.0010', percent: '-0.11%', max: '0.8750', min: '0.8750', time: '' }
     ],
     dolarAmericas: generateMockBrazilianReal(),
     indicesB3: [
@@ -1548,13 +1745,23 @@ app.get('/api/finance/dashboard', requireAuth, async (req, res) => {
       // Atualizar Dólar no box MOEDAS / CESTA DX
       const dolarIndex = data.moedas.findIndex(item => item.name === 'Dólar');
       if (dolarIndex !== -1) {
+        // Garantir que o valor tenha no máximo 4 casas decimais
+        const dollarValue = parseFloat(dollarData.value).toFixed(4);
+        const dollarMax = dollarData.max ? parseFloat(dollarData.max).toFixed(4) : dollarValue;
+        const dollarMin = dollarData.min ? parseFloat(dollarData.min).toFixed(4) : dollarValue;
+        
         data.moedas[dolarIndex] = {
-          ...data.moedas[dolarIndex],
-          value: dollarData.value,
-          variation: dollarData.variation,
-          percent: dollarData.percent,
-          time: dollarData.time
+          name: 'Dólar',
+          value: dollarValue,
+          variation: dollarData.variation || '0.00',
+          percent: dollarData.percent || '0.00%',
+          max: dollarMax,
+          min: dollarMin,
+          time: dollarData.time || new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
         };
+        console.log('✅ Dólar atualizado no box MOEDAS / CESTA DX:', data.moedas[dolarIndex]);
+      } else {
+        console.log('⚠️  Dólar não encontrado no array moedas para atualização');
       }
       
       // Sincronizar moedas comuns entre dolarMundo e moedas

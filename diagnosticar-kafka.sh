@@ -82,3 +82,5 @@ echo ""
 
 echo -e "${GREEN}✅ Diagnóstico completo!${NC}"
 
+
+

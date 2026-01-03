@@ -49,36 +49,105 @@ function createTrendBar(value) {
     `;
 }
 
+// Função para formatar valor (extraída para reutilização)
+function formatValue(val, isCurrency = false) {
+    if (!val || val === '0.00' || val === '0') return isCurrency ? '0.0000' : '0.00';
+    
+    // Se já é string formatada, tentar preservar casas decimais
+    const valStr = String(val);
+    const num = parseFloat(val);
+    if (isNaN(num)) return val;
+    
+    // Se for moeda/futuro (valor pequeno < 1), usar 4-5 casas decimais
+    if (isCurrency && num < 1) {
+        // Determinar número de casas decimais baseado no valor original
+        let decimalPlaces = 0;
+        if (valStr.includes('.')) {
+            const parts = valStr.split('.');
+            decimalPlaces = parts[1] ? parts[1].length : 0;
+        }
+        // Usar pelo menos 4 casas, mas manter as originais se tiver mais (até 5)
+        const decimals = decimalPlaces > 0 ? Math.max(4, Math.min(decimalPlaces, 5)) : 4;
+        return num.toFixed(decimals);
+    }
+    
+    // Se o número for muito grande, usar separador de milhar
+    if (num >= 1000) {
+        return num.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+    return num.toFixed(2);
+}
+
+// Função auxiliar para calcular e formatar valor inverso
+function formatInverseValue(val) {
+    const num = parseFloat(val) || 0;
+    if (num <= 0) return '0.000000';
+    const inverse = 1 / num;
+    return inverse.toLocaleString('pt-BR', { minimumFractionDigits: 6, maximumFractionDigits: 6 });
+}
+
+// Função para criar célula com valor e inverso
+function createValueWithInverseCell(val) {
+    const valStr = formatValue(val, true);
+    const inverseStr = formatInverseValue(val);
+    return `
+        <div class="table-cell cell-value cell-value-with-inverse">
+            <div class="value-main">${valStr}</div>
+            <div class="value-inverse">${inverseStr}</div>
+        </div>
+    `;
+}
+
+// Função para criar linha da tabela do Brazilian Real (com valor inverso)
+function createBrazilianRealRow(data) {
+    const variationClass = getVariationClass(data.variation);
+    const percentClass = getVariationClass(data.percent);
+    const timeClass = variationClass;
+    
+    // Formatar variação com sinal
+    const variation = data.variation || '0.00';
+    const variationFormatted = parseFloat(variation) >= 0 ? 
+        `+${formatNumber(variation, 4)}` : formatNumber(variation, 4);
+    
+    // Valores para Último, Máxima e Mínima
+    const value = data.value || '0.0000';
+    const max = data.max || value;
+    const min = data.min || value;
+    
+    return `
+        <div class="table-row brazilian-real-row">
+            <div class="table-cell cell-name">${data.name}</div>
+            <div class="table-cell cell-mes">${data.mes || ''}</div>
+            ${createValueWithInverseCell(value)}
+            ${createValueWithInverseCell(max)}
+            ${createValueWithInverseCell(min)}
+            <div class="table-cell cell-variation ${variationClass}">${variationFormatted}</div>
+            <div class="table-cell cell-percent ${percentClass}">${formatPercent(data.percent)}</div>
+            <div class="table-cell cell-time ${timeClass}">${data.time || ''}</div>
+        </div>
+    `;
+}
+
 // Função para criar linha da tabela
-function createTableRow(data) {
+function createTableRow(data, isCurrency = false) {
     const variationClass = getVariationClass(data.variation);
     const percentClass = getVariationClass(data.percent);
     const timeClass = variationClass; // Usar mesma classe para cor do ícone
     
     // Formatar variação com sinal
     const variation = data.variation || '0.00';
+    // Para moedas/futuros, usar mais casas decimais na variação
+    const variationDecimals = isCurrency ? 4 : 2;
     const variationFormatted = parseFloat(variation) >= 0 ? 
-        `+${formatNumber(variation)}` : formatNumber(variation);
-    
-    // Formatar valor com separador de milhar
-    const formatValue = (val) => {
-        if (!val || val === '0.00' || val === '0') return '0.00';
-        const num = parseFloat(val);
-        if (isNaN(num)) return val;
-        // Se o número for muito grande, usar separador de milhar
-        if (num >= 1000) {
-            return num.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-        }
-        return num.toFixed(2);
-    };
+        `+${formatNumber(variation, variationDecimals)}` : formatNumber(variation, variationDecimals);
     
     return `
         <div class="table-row">
             <div class="table-cell cell-name">${data.name}</div>
             <div class="table-cell cell-mes">${data.mes || ''}</div>
-            <div class="table-cell cell-value">${formatValue(data.value)}</div>
-            <div class="table-cell cell-value">${formatValue(data.max || data.value)}</div>
-            <div class="table-cell cell-value">${formatValue(data.min || data.value)}</div>
+            <div class="table-cell cell-value">${formatValue(data.value, isCurrency)}</div>
+            <div class="table-cell cell-value">${formatValue(data.max || data.value, isCurrency)}</div>
+            <div class="table-cell cell-value">${formatValue(data.min || data.value, isCurrency)}</div>
             <div class="table-cell cell-variation ${variationClass}">${variationFormatted}</div>
             <div class="table-cell cell-percent ${percentClass}">${formatPercent(data.percent)}</div>
             <div class="table-cell cell-time ${timeClass}">${data.time || ''}</div>
@@ -87,13 +156,19 @@ function createTableRow(data) {
 }
 
 // Função para renderizar tabela
-function renderTable(containerId, data) {
+function renderTable(containerId, data, isCurrency = false) {
     const container = document.getElementById(containerId);
     if (!container) return;
     
     if (!data || data.length === 0) {
         container.innerHTML = '<div class="table-loading">Sem dados disponíveis</div>';
         return;
+    }
+    
+    // Detectar se é Brazilian Real ou outras moedas baseado no containerId
+    const isBrazilianReal = containerId === 'dolar-americas-table';
+    if (containerId === 'dolar-americas-table' || containerId.includes('real') || containerId.includes('moedas')) {
+        isCurrency = true;
     }
     
     // Criar header da tabela
@@ -110,7 +185,10 @@ function renderTable(containerId, data) {
         </div>
     `;
     
-    const rows = data.map(item => createTableRow(item)).join('');
+    // Usar função específica para Brazilian Real, caso contrário usar função genérica
+    const rows = isBrazilianReal 
+        ? data.map(item => createBrazilianRealRow(item)).join('')
+        : data.map(item => createTableRow(item, isCurrency)).join('');
     container.innerHTML = header + rows;
 }
 
@@ -245,6 +323,20 @@ async function fetchData() {
         const data = await response.json();
         console.log('✅ Dados recebidos:', Object.keys(data));
         
+        // Armazenar dados para pesquisa
+        allAssetsData = {
+            moedas: data.moedas || [],
+            dolarAmericas: data.dolarAmericas || [],
+            dolarMundo: data.dolarMundo || [],
+            dolarEmergentes: data.dolarEmergentes || [],
+            americas: data.americas || [],
+            futuros: data.futuros || [],
+            europa: data.europa || [],
+            treasuries: data.treasuries || [],
+            asiaOceania: data.asiaOceania || [],
+            criptomoedas: data.criptomoedas || []
+        };
+        
         // Renderizar cada seção
         if (data.americas) {
             console.log('📊 Renderizando Américas:', data.americas.length, 'itens');
@@ -264,7 +356,8 @@ async function fetchData() {
         // Atualizar timestamp
         const lastUpdate = document.getElementById('lastUpdate');
         if (lastUpdate) {
-            lastUpdate.textContent = `Última atualização: ${new Date().toLocaleTimeString('pt-BR')}`;
+            lastUpdate.textContent = `Atualizado: ${new Date().toLocaleTimeString('pt-BR')}`;
+            lastUpdate.style.color = '#ffffff';
         }
         
     } catch (error) {
@@ -280,7 +373,7 @@ async function fetchData() {
         const lastUpdate = document.getElementById('lastUpdate');
         if (lastUpdate) {
             lastUpdate.textContent = `Erro: ${error.message}`;
-            lastUpdate.style.color = '#f44336';
+            lastUpdate.style.color = '#ffcccc';
         }
     }
 }
@@ -334,6 +427,183 @@ function updateClock() {
     }
 }
 
+// Função para mostrar seção específica
+function showSection(sectionName) {
+    const mainContent = document.querySelector('.main-content');
+    
+    // Se for dashboard, mostrar múltiplas seções em grid
+    if (sectionName === 'dashboard') {
+        mainContent.classList.add('dashboard-mode');
+        
+        // Mostrar 6 seções principais (3 na primeira linha, 3 na segunda)
+        const dashboardSections = [
+            'section-moedas',
+            'section-dolar-mundo',
+            'section-dolar-emergentes',
+            'section-americas',
+            'section-futuros',
+            'section-treasuries'
+        ];
+        
+        // Calendário abaixo ocupando toda largura
+        const calendarSection = 'section-calendar';
+        
+        // Esconder todas as seções primeiro
+        document.querySelectorAll('.content-section').forEach(section => {
+            section.classList.remove('active', 'dashboard-box', 'dashboard-box-full');
+        });
+        
+        // Mostrar seções do dashboard
+        dashboardSections.forEach(sectionId => {
+            const section = document.getElementById(sectionId);
+            if (section) {
+                section.classList.add('active', 'dashboard-box');
+            }
+        });
+        
+        // Mostrar calendário abaixo ocupando toda largura
+        const calendar = document.getElementById(calendarSection);
+        if (calendar) {
+            calendar.classList.add('active', 'dashboard-box', 'dashboard-box-full');
+        }
+        
+        return false;
+    }
+    
+    // Para outras seções, modo normal (uma por vez)
+    mainContent.classList.remove('dashboard-mode');
+    
+    // Esconder todas as seções
+    document.querySelectorAll('.content-section').forEach(section => {
+        section.classList.remove('active', 'dashboard-box');
+    });
+    
+    // Mapear nomes de seção para IDs
+    const sectionMap = {
+        'moedas': 'section-moedas',
+        'brazilian-real': 'section-brazilian-real',
+        'dolar-mundo': 'section-dolar-mundo',
+        'dolar-emergentes': 'section-dolar-emergentes',
+        'americas': 'section-americas',
+        'futuros': 'section-futuros',
+        'europa': 'section-europa',
+        'treasuries': 'section-treasuries',
+        'asia-oceania': 'section-asia-oceania',
+        'criptomoedas': 'section-criptomoedas',
+        'calendar': 'section-calendar'
+    };
+    
+    // Mostrar seção selecionada
+    const sectionId = sectionMap[sectionName] || 'section-moedas';
+    const section = document.getElementById(sectionId);
+    if (section) {
+        section.classList.add('active');
+        // Scroll suave para a seção
+        section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+    
+    return false; // Prevenir comportamento padrão do link
+}
+
+// Função para pesquisar ativos
+let allAssetsData = {}; // Armazenar todos os dados para pesquisa
+
+function searchAssets(query) {
+    if (!query || query.trim() === '') {
+        return [];
+    }
+    
+    const searchTerm = query.toLowerCase().trim();
+    const results = [];
+    
+    // Pesquisar em todos os dados disponíveis
+    Object.keys(allAssetsData).forEach(category => {
+        const items = allAssetsData[category];
+        if (Array.isArray(items)) {
+            items.forEach(item => {
+                const name = (item.name || '').toLowerCase();
+                if (name.includes(searchTerm)) {
+                    results.push({
+                        category: category,
+                        name: item.name,
+                        value: item.value,
+                        variation: item.variation,
+                        percent: item.percent
+                    });
+                }
+            });
+        }
+    });
+    
+    return results;
+}
+
+// Função para exibir resultados da pesquisa
+function displaySearchResults(results) {
+    // Criar ou atualizar dropdown de resultados
+    let resultsDropdown = document.getElementById('search-results');
+    if (!resultsDropdown) {
+        resultsDropdown = document.createElement('div');
+        resultsDropdown.id = 'search-results';
+        resultsDropdown.className = 'search-results-dropdown';
+        document.querySelector('.search-container').appendChild(resultsDropdown);
+    }
+    
+    if (results.length === 0) {
+        resultsDropdown.innerHTML = '<div class="search-result-item">Nenhum resultado encontrado</div>';
+        resultsDropdown.style.display = 'block';
+        return;
+    }
+    
+    // Limitar a 10 resultados
+    const limitedResults = results.slice(0, 10);
+    
+    resultsDropdown.innerHTML = limitedResults.map(result => {
+        const variationClass = getVariationClass(result.variation);
+        return `
+            <div class="search-result-item" onclick="selectSearchResult('${result.category}', '${result.name}')">
+                <div class="search-result-name">${result.name}</div>
+                <div class="search-result-category">${result.category}</div>
+                <div class="search-result-value ${variationClass}">${result.value || 'N/A'}</div>
+            </div>
+        `;
+    }).join('');
+    
+    resultsDropdown.style.display = 'block';
+}
+
+// Função para selecionar resultado da pesquisa
+function selectSearchResult(category, name) {
+    // Mapear categoria para seção
+    const categoryMap = {
+        'moedas': 'moedas',
+        'dolarAmericas': 'brazilian-real',
+        'dolarMundo': 'dolar-mundo',
+        'dolarEmergentes': 'dolar-emergentes',
+        'americas': 'americas',
+        'futuros': 'futuros',
+        'europa': 'europa',
+        'treasuries': 'treasuries',
+        'asiaOceania': 'asia-oceania',
+        'criptomoedas': 'criptomoedas'
+    };
+    
+    const section = categoryMap[category] || 'moedas';
+    showSection(section);
+    
+    // Esconder dropdown
+    const resultsDropdown = document.getElementById('search-results');
+    if (resultsDropdown) {
+        resultsDropdown.style.display = 'none';
+    }
+    
+    // Limpar campo de pesquisa
+    const searchInput = document.getElementById('assetSearch');
+    if (searchInput) {
+        searchInput.value = '';
+    }
+}
+
 // Inicializar dashboard
 document.addEventListener('DOMContentLoaded', () => {
     console.log('📊 Dashboard inicializado');
@@ -344,6 +614,42 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Inicializar abas
     initTabs();
+    
+    // Mostrar modo dashboard por padrão (3-4 boxes pequenos)
+    showSection('dashboard');
+    
+    // Inicializar pesquisa de ativos
+    const searchInput = document.getElementById('assetSearch');
+    if (searchInput) {
+        let searchTimeout;
+        searchInput.addEventListener('input', (e) => {
+            clearTimeout(searchTimeout);
+            const query = e.target.value;
+            
+            if (query.trim() === '') {
+                const resultsDropdown = document.getElementById('search-results');
+                if (resultsDropdown) {
+                    resultsDropdown.style.display = 'none';
+                }
+                return;
+            }
+            
+            searchTimeout = setTimeout(() => {
+                const results = searchAssets(query);
+                displaySearchResults(results);
+            }, 300); // Debounce de 300ms
+        });
+        
+        // Esconder dropdown ao clicar fora
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('.search-container')) {
+                const resultsDropdown = document.getElementById('search-results');
+                if (resultsDropdown) {
+                    resultsDropdown.style.display = 'none';
+                }
+            }
+        });
+    }
     
     // Carregar dados iniciais imediatamente
     refreshData();

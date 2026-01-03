@@ -121,3 +121,5 @@ echo "   cd /home/ioliveira/Documentos/sei-ia/healthchecker/apibolsa"
 echo "   ./diagnosticar-kafka.sh"
 echo ""
 
+
+

@@ -12,3 +12,5 @@ spec:
     cleanup.policy: compact
     segment.bytes: 104857600
 
+
+
