@@ -1,0 +1,62 @@
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaTopic
+metadata:
+  name: pedidos
+  namespace: apibolsa
+  labels:
+    app.kubernetes.io/name: kafka-topic
+    app.kubernetes.io/part-of: apibolsa
+spec:
+  partitions: 3
+  replicas: 1
+  config:
+    retention.ms: 604800000
+    segment.ms: 86400000
+---
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaTopic
+metadata:
+  name: pagamentos
+  namespace: apibolsa
+  labels:
+    app.kubernetes.io/name: kafka-topic
+    app.kubernetes.io/part-of: apibolsa
+spec:
+  partitions: 3
+  replicas: 1
+  config:
+    retention.ms: 604800000
+    segment.ms: 86400000
+---
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaTopic
+metadata:
+  name: notificacoes
+  namespace: apibolsa
+  labels:
+    app.kubernetes.io/name: kafka-topic
+    app.kubernetes.io/part-of: apibolsa
+spec:
+  partitions: 3
+  replicas: 1
+  config:
+    retention.ms: 604800000
+    segment.ms: 86400000
+---
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaTopic
+metadata:
+  name: logs
+  namespace: apibolsa
+  labels:
+    app.kubernetes.io/name: kafka-topic
+    app.kubernetes.io/part-of: apibolsa
+spec:
+  partitions: 3
+  replicas: 1
+  config:
+    retention.ms: 604800000
+    segment.ms: 86400000
+
+
+

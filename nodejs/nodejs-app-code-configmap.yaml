@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nodejs-app-code
+  namespace: apibolsa
+  labels:
+    app.kubernetes.io/name: nodejs
+    app.kubernetes.io/part-of: apibolsa
+binaryData:
+  # Este ConfigMap será criado via script que converte os arquivos para base64
+  # Por enquanto, vamos usar um initContainer ou criar a imagem Docker
+
+
+

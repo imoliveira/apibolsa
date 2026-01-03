@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teste de Conexão MySQL - API Bolsa</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            padding: 40px;
+            max-width: 800px;
+            width: 100%;
+            animation: slideUp 0.6s ease-out;
+        }
+
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        h1 {
+            color: #2c3e50;
+            margin-bottom: 10px;
+            font-size: 28px;
+        }
+
+        .subtitle {
+            color: #7f8c8d;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+
+        .status-card {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+            border-left: 4px solid #667eea;
+        }
+
+        .status-card.connected {
+            border-left-color: #27ae60;
+            background: #d4edda;
+        }
+
+        .status-card.error {
+            border-left-color: #e74c3c;
+            background: #f8d7da;
+        }
+
+        .status-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 15px;
+        }
+
+        .status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+
+        .status-indicator.connected {
+            background: #27ae60;
+            box-shadow: 0 0 10px rgba(39, 174, 96, 0.5);
+        }
+
+        .status-indicator.disconnected {
+            background: #e74c3c;
+        }
+
+        .status-indicator.checking {
+            background: #f39c12;
+            animation: pulse 1s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-right: 10px;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn:active {
+            transform: translateY(0);
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+        }
+
+        .info-item {
+            background: white;
+            padding: 12px;
+            border-radius: 8px;
+            border: 1px solid #e0e0e0;
+        }
+
+        .info-label {
+            font-size: 12px;
+            color: #7f8c8d;
+            margin-bottom: 5px;
+        }
+
+        .info-value {
+            font-size: 14px;
+            color: #2c3e50;
+            font-weight: 600;
+        }
+
+        .query-section {
+            margin-top: 30px;
+            padding-top: 30px;
+            border-top: 2px solid #e0e0e0;
+        }
+
+        .query-input {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            margin-bottom: 10px;
+            resize: vertical;
+            min-height: 100px;
+        }
+
+        .query-input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .result-box {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 15px;
+            max-height: 300px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+        }
+
+        .result-box pre {
+            margin: 0;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        .error-message {
+            color: #e74c3c;
+            background: #fee;
+            padding: 12px;
+            border-radius: 8px;
+            margin-top: 10px;
+            border-left: 4px solid #e74c3c;
+        }
+
+        .success-message {
+            color: #27ae60;
+            background: #efe;
+            padding: 12px;
+            border-radius: 8px;
+            margin-top: 10px;
+            border-left: 4px solid #27ae60;
+        }
+
+        .loading {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-left: 10px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔌 Teste de Conexão MySQL</h1>
+        <p class="subtitle">API Bolsa - Verificação de Conectividade com Banco de Dados</p>
+
+        <div id="statusCard" class="status-card">
+            <div class="status-header">
+                <div>
+                    <span id="statusIndicator" class="status-indicator disconnected"></span>
+                    <strong id="statusText">Desconectado</strong>
+                </div>
+                <button class="btn" id="testBtn" onclick="testConnection()">Testar Conexão</button>
+            </div>
+            <div id="statusDetails"></div>
+        </div>
+
+        <div class="query-section">
+            <h3>📝 Executar Query SQL</h3>
+            <textarea 
+                id="queryInput" 
+                class="query-input" 
+                placeholder="Digite sua query SQL aqui... Exemplo: SELECT VERSION(), DATABASE(), USER();"
+            >SELECT VERSION(), DATABASE(), USER();</textarea>
+            <button class="btn" onclick="executeQuery()">Executar Query</button>
+            <div id="queryResult"></div>
+        </div>
+    </div>
+
+    <script>
+        let autoRefreshInterval = null;
+
+        // Testar conexão
+        async function testConnection() {
+            const btn = document.getElementById('testBtn');
+            const statusCard = document.getElementById('statusCard');
+            const statusIndicator = document.getElementById('statusIndicator');
+            const statusText = document.getElementById('statusText');
+            const statusDetails = document.getElementById('statusDetails');
+
+            btn.disabled = true;
+            statusIndicator.className = 'status-indicator checking';
+            statusText.textContent = 'Testando...';
+            statusDetails.innerHTML = '<div class="loading"></div>';
+
+            try {
+                const response = await fetch('/api/test-connection');
+                const data = await response.json();
+
+                if (data.success) {
+                    statusCard.className = 'status-card connected';
+                    statusIndicator.className = 'status-indicator connected';
+                    statusText.textContent = 'Conectado';
+                    
+                    statusDetails.innerHTML = `
+                        <div class="info-grid">
+                            <div class="info-item">
+                                <div class="info-label">Versão MySQL</div>
+                                <div class="info-value">${data.info.version}</div>
+                            </div>
+                            <div class="info-item">
+                                <div class="info-label">Database</div>
+                                <div class="info-value">${data.info.database || 'N/A'}</div>
+                            </div>
+                            <div class="info-item">
+                                <div class="info-label">Usuário</div>
+                                <div class="info-value">${data.info.user}</div>
+                            </div>
+                            <div class="info-item">
+                                <div class="info-label">Host</div>
+                                <div class="info-value">${data.config.host}:${data.config.port}</div>
+                            </div>
+                        </div>
+                        <div class="success-message" style="margin-top: 15px;">
+                            ✅ Conexão estabelecida com sucesso! (${new Date(data.timestamp).toLocaleString()})
+                        </div>
+                    `;
+                } else {
+                    statusCard.className = 'status-card error';
+                    statusIndicator.className = 'status-indicator disconnected';
+                    statusText.textContent = 'Erro de Conexão';
+                    
+                    statusDetails.innerHTML = `
+                        <div class="error-message">
+                            ❌ Erro: ${data.error}
+                        </div>
+                        <div class="info-grid" style="margin-top: 15px;">
+                            <div class="info-item">
+                                <div class="info-label">Host</div>
+                                <div class="info-value">${data.config.host}:${data.config.port}</div>
+                            </div>
+                            <div class="info-item">
+                                <div class="info-label">Database</div>
+                                <div class="info-value">${data.config.database}</div>
+                            </div>
+                            <div class="info-item">
+                                <div class="info-label">Usuário</div>
+                                <div class="info-value">${data.config.user}</div>
+                            </div>
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                statusCard.className = 'status-card error';
+                statusIndicator.className = 'status-indicator disconnected';
+                statusText.textContent = 'Erro';
+                statusDetails.innerHTML = `<div class="error-message">❌ Erro ao conectar: ${error.message}</div>`;
+            } finally {
+                btn.disabled = false;
+            }
+        }
+
+        // Executar query
+        async function executeQuery() {
+            const queryInput = document.getElementById('queryInput');
+            const queryResult = document.getElementById('queryResult');
+            const query = queryInput.value.trim();
+
+            if (!query) {
+                queryResult.innerHTML = '<div class="error-message">Por favor, digite uma query SQL</div>';
+                return;
+            }
+
+            queryResult.innerHTML = '<div class="loading"></div> Carregando...';
+
+            try {
+                const response = await fetch('/api/query', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ query })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    queryResult.innerHTML = `
+                        <div class="success-message">✅ Query executada com sucesso!</div>
+                        <div class="result-box">
+                            <pre>${JSON.stringify(data.data, null, 2)}</pre>
+                        </div>
+                    `;
+                } else {
+                    queryResult.innerHTML = `<div class="error-message">❌ Erro: ${data.error}</div>`;
+                }
+            } catch (error) {
+                queryResult.innerHTML = `<div class="error-message">❌ Erro ao executar query: ${error.message}</div>`;
+            }
+        }
+
+        // Auto-refresh a cada 30 segundos
+        function startAutoRefresh() {
+            if (autoRefreshInterval) {
+                clearInterval(autoRefreshInterval);
+            }
+            autoRefreshInterval = setInterval(testConnection, 30000);
+        }
+
+        // Testar conexão ao carregar a página
+        window.addEventListener('load', () => {
+            testConnection();
+            startAutoRefresh();
+        });
+
+        // Permitir executar query com Ctrl+Enter
+        document.getElementById('queryInput').addEventListener('keydown', (e) => {
+            if (e.ctrlKey && e.key === 'Enter') {
+                executeQuery();
+            }
+        });
+    </script>
+</body>
+</html>
+
+
+

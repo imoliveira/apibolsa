@@ -1,0 +1,21 @@
+apiVersion: infinispan.org/v1
+kind: Cache
+metadata:
+  name: apibolsa-cache-config
+  namespace: apibolsa
+  labels:
+    app.kubernetes.io/name: cache
+    app.kubernetes.io/part-of: apibolsa
+spec:
+  clusterName: apibolsa-cache
+  name: default
+  template: |
+    <distributed-cache name="default">
+      <memory>
+        <object size="1000"/>
+      </memory>
+      <expiration lifespan="3600000" max-idle="1800000"/>
+    </distributed-cache>
+
+
+

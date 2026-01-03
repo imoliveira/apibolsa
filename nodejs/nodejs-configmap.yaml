@@ -1,0 +1,22 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nodejs-config
+  namespace: apibolsa
+  labels:
+    app.kubernetes.io/name: nodejs
+    app.kubernetes.io/part-of: apibolsa
+data:
+  PORT: "3000"
+  DB_HOST: "mysql"
+  DB_PORT: "3306"
+  DB_NAME: "apibolsa"
+  DB_USER: "apibolsa"
+  LOGIN_DB_NAME: "loginapibolsaDB"
+  LOGIN_DB_USER: "teste"
+  SESSION_SECRET: "apibolsa-session-secret-key"
+  DATAGRID_ENABLED: "true"
+  DATAGRID_URL: "http://apibolsa-cache:11222"
+  DATAGRID_USER: "developer"
+  KAFKA_BROKERS: "kafka-lab-kafka-bootstrap.kafka.svc.cluster.local:9092"
+

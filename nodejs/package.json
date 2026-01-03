@@ -1,0 +1,23 @@
+{
+  "name": "apibolsa-test",
+  "version": "1.0.0",
+  "description": "Aplicação de teste de conexão com MySQL",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "mysql2": "^3.6.5",
+    "body-parser": "^1.20.2",
+    "bcrypt": "^5.1.1",
+    "express-session": "^1.17.3",
+    "cookie-parser": "^1.4.6",
+    "node-cache": "^5.1.2",
+    "axios": "^1.6.2",
+    "kafkajs": "^2.2.4",
+    "ws": "^1.1.5",
+    "cheerio": "^0.22.0"
+  }
+}
+

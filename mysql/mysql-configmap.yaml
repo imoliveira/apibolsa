@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mysql-config
+  namespace: apibolsa
+  labels:
+    app.kubernetes.io/name: mysql
+    app.kubernetes.io/part-of: apibolsa
+data:
+  MYSQL_DATABASE: "apibolsa"
+  MYSQL_USER: "apibolsa"
+
+
+

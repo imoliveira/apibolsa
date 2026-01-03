@@ -1,0 +1,14 @@
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaTopic
+metadata:
+  name: __consumer_offsets
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: kafka-lab
+spec:
+  partitions: 50
+  replicas: 1
+  config:
+    cleanup.policy: compact
+    segment.bytes: 104857600
+

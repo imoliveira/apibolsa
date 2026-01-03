@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - API Bolsa</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            /* Imagem de fundo - Touro cinza com degradê */
+            /* Degradê cinza aplicado sobre a imagem */
+            background-image: 
+                linear-gradient(135deg, 
+                    rgba(128, 128, 128, 0.75) 0%, 
+                    rgba(96, 96, 96, 0.80) 50%, 
+                    rgba(64, 64, 64, 0.75) 100%
+                ),
+                url('https://images.unsplash.com/photo-1579621970563-ebec7560ff3e?w=1920&q=80&auto=format&fit=crop');
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+            background-repeat: no-repeat;
+            /* Cor de fallback - degradê cinza */
+            background-color: #808080;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            position: relative;
+        }
+
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            /* Overlay adicional para garantir o degradê cinza mais intenso */
+            background: linear-gradient(
+                135deg,
+                rgba(140, 140, 140, 0.4) 0%,
+                rgba(100, 100, 100, 0.5) 50%,
+                rgba(70, 70, 70, 0.4) 100%
+            );
+            z-index: 0;
+            pointer-events: none;
+        }
+
+        .login-container {
+            background: rgba(255, 255, 255, 0.98);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+            padding: 40px;
+            max-width: 450px;
+            width: 100%;
+            animation: slideUp 0.6s ease-out;
+            position: relative;
+            z-index: 1;
+        }
+
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .logo {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .logo h1 {
+            color: #2c3e50;
+            font-size: 32px;
+            margin-bottom: 5px;
+        }
+
+        .logo p {
+            color: #7f8c8d;
+            font-size: 14px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            color: #2c3e50;
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            font-size: 15px;
+            transition: all 0.3s ease;
+            background: #f8f9fa;
+        }
+
+        .form-group input:focus {
+            outline: none;
+            border-color: #667eea;
+            background: white;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .btn-login {
+            width: 100%;
+            padding: 14px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-top: 10px;
+        }
+
+        .btn-login:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-login:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .error-message {
+            background: #fee;
+            color: #c0392b;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            font-size: 14px;
+            border-left: 4px solid #e74c3c;
+            display: none;
+        }
+
+        .success-message {
+            background: #efe;
+            color: #27ae60;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            font-size: 14px;
+            border-left: 4px solid #27ae60;
+            display: none;
+        }
+
+        .loading {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-left: 10px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .footer {
+            text-align: center;
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #e0e0e0;
+        }
+
+        .footer p {
+            color: #95a5a6;
+            font-size: 12px;
+        }
+
+        .link-test {
+            text-align: center;
+            margin-top: 20px;
+        }
+
+        .link-test a {
+            color: #667eea;
+            text-decoration: none;
+            font-size: 14px;
+        }
+
+        .link-test a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="login-container">
+        <div class="logo">
+            <h1>🔐 API Bolsa</h1>
+            <p>Sistema de Login</p>
+        </div>
+
+        <form id="loginForm">
+            <div id="errorMessage" class="error-message"></div>
+            <div id="successMessage" class="success-message"></div>
+
+            <div class="form-group">
+                <label for="username">Usuário</label>
+                <input 
+                    type="text" 
+                    id="username" 
+                    name="username" 
+                    required 
+                    autocomplete="username"
+                    placeholder="Digite seu usuário"
+                >
+            </div>
+
+            <div class="form-group">
+                <label for="password">Senha</label>
+                <input 
+                    type="password" 
+                    id="password" 
+                    name="password" 
+                    required 
+                    autocomplete="current-password"
+                    placeholder="Digite sua senha"
+                >
+            </div>
+
+            <button type="submit" class="btn-login" id="loginButton">
+                <span id="btnText">Entrar</span>
+                <span id="btnLoader" class="loading" style="display: none;"></span>
+            </button>
+        </form>
+
+        <div class="link-test">
+            <a href="/">← Voltar para teste de conexão</a>
+        </div>
+
+        <div class="footer">
+            <p>&copy; 2024 API Bolsa. Todos os direitos reservados.</p>
+        </div>
+    </div>
+
+    <script>
+        const loginForm = document.getElementById('loginForm');
+        const errorMessage = document.getElementById('errorMessage');
+        const successMessage = document.getElementById('successMessage');
+        const loginButton = document.getElementById('loginButton');
+        const btnText = document.getElementById('btnText');
+        const btnLoader = document.getElementById('btnLoader');
+
+        // Verificar se já está logado
+        checkSession();
+
+        loginForm.addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const username = document.getElementById('username').value.trim();
+            const password = document.getElementById('password').value;
+
+            hideMessages();
+
+            if (!username || !password) {
+                showError('Por favor, preencha todos os campos');
+                return;
+            }
+
+            setLoading(true);
+
+            try {
+                const response = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ username, password }),
+                    credentials: 'include'
+                });
+
+                const data = await response.json();
+
+                if (response.ok && data.success) {
+                    showSuccess('Login realizado com sucesso! Redirecionando...');
+                    setTimeout(() => {
+                        window.location.href = '/dashboard';
+                    }, 1000);
+                } else {
+                    showError(data.error || 'Usuário ou senha inválidos');
+                    setLoading(false);
+                }
+            } catch (error) {
+                console.error('Erro no login:', error);
+                showError('Erro ao conectar com o servidor. Tente novamente.');
+                setLoading(false);
+            }
+        });
+
+        function showError(message) {
+            errorMessage.textContent = message;
+            errorMessage.style.display = 'block';
+        }
+
+        function showSuccess(message) {
+            successMessage.textContent = message;
+            successMessage.style.display = 'block';
+        }
+
+        function hideMessages() {
+            errorMessage.style.display = 'none';
+            successMessage.style.display = 'none';
+        }
+
+        function setLoading(loading) {
+            if (loading) {
+                loginButton.disabled = true;
+                btnText.style.display = 'none';
+                btnLoader.style.display = 'inline-block';
+            } else {
+                loginButton.disabled = false;
+                btnText.style.display = 'inline';
+                btnLoader.style.display = 'none';
+            }
+        }
+
+        async function checkSession() {
+            try {
+                const response = await fetch('/api/session', {
+                    method: 'GET',
+                    credentials: 'include'
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.user) {
+                        window.location.href = '/dashboard';
+                    }
+                }
+            } catch (error) {
+                // Ignorar erros de sessão
+            }
+        }
+    </script>
+</body>
+</html>
+
+
+

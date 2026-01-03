@@ -1,0 +1,20 @@
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: nginx
+  namespace: apibolsa
+  labels:
+    app.kubernetes.io/name: nginx
+    app.kubernetes.io/part-of: apibolsa
+spec:
+  host: apibolsa.apps-crc.testing
+  to:
+    kind: Service
+    name: nginx
+    weight: 100
+  port:
+    targetPort: http
+  wildcardPolicy: None
+
+
+

@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Financeiro - API Bolsa</title>
+    <link rel="stylesheet" href="/dashboard.css">
+</head>
+<body>
+    <div class="dashboard-container">
+        <header class="dashboard-header">
+            <div class="header-left">
+                <h1>
+                    <a href="http://apibolsa.apps-crc.testing/dashboard" class="dashboard-title-link">
+                        📊 Dashboard Financeiro
+                    </a>
+                </h1>
+                <div class="clock-container">
+                    <span class="clock-icon">🕐</span>
+                    <span id="clock" class="clock-time">00:00:00</span>
+                </div>
+            </div>
+            <div class="header-actions">
+                <span id="lastUpdate" class="last-update">Atualizando...</span>
+                <button id="refreshBtn" class="btn-refresh" onclick="refreshData()">🔄 Atualizar</button>
+            </div>
+        </header>
+
+        <!-- 5 BOXES PRINCIPAIS -->
+        <div class="top-boxes-grid">
+            <!-- MOEDAS / CESTA DX -->
+            <section class="dashboard-section">
+                <h2>
+                    <a href="https://br.investing.com/currencies/single-currency-crosses" target="_blank" rel="noopener noreferrer" class="section-title-link">
+                        MOEDAS / CESTA DX
+                    </a>
+                </h2>
+                <div class="data-table" id="moedas-table">
+                    <div class="table-loading">Carregando...</div>
+                </div>
+            </section>
+
+            <!-- BRAZILIAN REAL (CME) -->
+            <section class="dashboard-section">
+                <div class="section-header">
+                    <h2>
+                        <a href="https://www.cmegroup.com/markets/fx/emerging-market/brazilian-real.quotes.html" target="_blank" rel="noopener noreferrer" class="section-title-link">
+                            BRAZILIAN REAL (CME)
+                        </a>
+                    </h2>
+                </div>
+                <div class="data-table" id="dolar-americas-table">
+                    <div class="table-loading">Carregando...</div>
+                </div>
+            </section>
+
+            <!-- DÓLAR X MUNDO -->
+            <section class="dashboard-section">
+                <h2>
+                    <a href="https://www.investing.com/currencies/major-pairs" target="_blank" rel="noopener noreferrer" class="section-title-link">
+                        DÓLAR X MUNDO
+                    </a>
+                </h2>
+                <div class="data-table" id="dolar-mundo-table">
+                    <div class="table-loading">Carregando...</div>
+                </div>
+            </section>
+
+            <!-- DÓLAR X EMERGENTES -->
+            <section class="dashboard-section">
+                <h2>
+                    <a href="https://www.investing.com/currencies/emerging" target="_blank" rel="noopener noreferrer" class="section-title-link">
+                        DÓLAR X EMERGENTES
+                    </a>
+                </h2>
+                <div class="data-table" id="dolar-emergentes-table">
+                    <div class="table-loading">Carregando...</div>
+                </div>
+            </section>
+
+            <!-- CALENDÁRIO ECONÔMICO (ÚLTIMO) -->
+            <section class="dashboard-section">
+                <div class="section-header">
+                    <h2>
+                        <a href="https://br.investing.com/economic-calendar" target="_blank" rel="noopener noreferrer" class="section-title-link">
+                            CALENDÁRIO ECONÔMICO
+                        </a>
+                    </h2>
+                </div>
+                <div class="economic-calendar" id="economic-calendar">
+                    <div class="table-loading">Carregando...</div>
+                </div>
+            </section>
+        </div>
+
+        <!-- DEMAIS BOXES LADO A LADO -->
+        <div class="dashboard-grid">
+
+            <!-- AMÉRICAS (Futuros CFDs) -->
+            <section class="dashboard-section">
+                <div class="section-header">
+                    <h2>
+                        <a href="https://www.investing.com/indices/indices-futures" target="_blank" rel="noopener noreferrer" class="section-title-link">
+                            AMÉRICAS (Futuros CFDs)
+                        </a>
+                    </h2>
+                    <div class="table-tabs">
+                        <button class="tab-btn active" data-tab="preco">Preço</button>
+                        <button class="tab-btn" data-tab="desempenho">Desempenho</button>
+                        <button class="tab-btn" data-tab="tecnica">Técnica</button>
+                    </div>
+                </div>
+                <div class="data-table" id="americas-table">
+                    <div class="table-loading">Carregando...</div>
+                </div>
+            </section>
+
+            <!-- FUTUROS -->
+            <section class="dashboard-section">
+                <h2>
+                    <a href="https://www.investing.com/indices/indices-futures" target="_blank" rel="noopener noreferrer" class="section-title-link">
+                        FUTUROS
+                    </a>
+                </h2>
+                <div class="data-table" id="futuros-table">
+                    <div class="table-loading">Carregando...</div>
+                </div>
+            </section>
+
+            <!-- DÓLAR X EMERGENTES -->
+            <section class="dashboard-section">
+                <h2>
+                    <a href="https://www.investing.com/currencies/emerging" target="_blank" rel="noopener noreferrer" class="section-title-link">
+                        DÓLAR X EMERGENTES
+                    </a>
+                </h2>
+                <div class="data-table" id="dolar-emergentes-table">
+                    <div class="table-loading">Carregando...</div>
+                </div>
+            </section>
+
+            <!-- DÓLAR X MUNDO -->
+            <section class="dashboard-section">
+                <h2>
+                    <a href="https://www.investing.com/currencies/major-pairs" target="_blank" rel="noopener noreferrer" class="section-title-link">
+                        DÓLAR X MUNDO
+                    </a>
+                </h2>
+                <div class="data-table" id="dolar-mundo-table">
+                    <div class="table-loading">Carregando...</div>
+                </div>
+            </section>
+
+            <!-- EUROPA (Futuros CFDs) -->
+            <section class="dashboard-section">
+                <h2>
+                    <a href="https://www.investing.com/indices/european-indices" target="_blank" rel="noopener noreferrer" class="section-title-link">
+                        EUROPA (Futuros CFDs)
+                    </a>
+                </h2>
+                <div class="data-table" id="europa-table">
+                    <div class="table-loading">Carregando...</div>
+                </div>
+            </section>
+
+            <!-- TREASURIES -->
+            <section class="dashboard-section">
+                <h2>
+                    <a href="https://www.investing.com/rates-bonds/usa-government-bonds" target="_blank" rel="noopener noreferrer" class="section-title-link">
+                        TREASURIES
+                    </a>
+                </h2>
+                <div class="data-table" id="treasuries-table">
+                    <div class="table-loading">Carregando...</div>
+                </div>
+            </section>
+
+            <!-- ÁSIA E OCEANIA (Futuros CFDs) -->
+            <section class="dashboard-section">
+                <h2>
+                    <a href="https://www.investing.com/indices/asia-pacific-indices" target="_blank" rel="noopener noreferrer" class="section-title-link">
+                        ÁSIA E OCEANIA (Futuros CFDs)
+                    </a>
+                </h2>
+                <div class="data-table" id="asia-oceania-table">
+                    <div class="table-loading">Carregando...</div>
+                </div>
+            </section>
+
+            <!-- CRIPTOMOEDAS (Cotação em BRL) -->
+            <section class="dashboard-section">
+                <h2>
+                    <a href="https://www.investing.com/crypto/currencies" target="_blank" rel="noopener noreferrer" class="section-title-link">
+                        CRIPTOMOEDAS (Cotação em BRL)
+                    </a>
+                </h2>
+                <div class="data-table" id="criptomoedas-table">
+                    <div class="table-loading">Carregando...</div>
+                </div>
+            </section>
+
+        </div>
+    </div>
+
+    <script src="/dashboard.js"></script>
+</body>
+</html>
+
+
+
