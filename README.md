@@ -1,11 +1,11 @@
-# API Bolsa - Fase 1
+# API Bolsa - Dashboard Financeiro
 
 ## 📋 Objetivo
 
 Criar namespace `apibolsa` com:
 - ✅ Nginx (proxy reverso)
 - ✅ MySQL (banco de dados)
-- ✅ Node.js (aplicação de teste de conexão)
+- ✅ Node.js (Dashboard Financeiro completo)
 
 ## 🚀 Deploy
 
@@ -146,7 +146,3 @@ apibolsa/
 │   └── nginx-route.yaml
 └── deploy-all.sh
 ```
-
-
-
-# apibolsa
