@@ -35,6 +35,9 @@ data:
 
         location /health {
             proxy_pass http://nodejs/health;
+            proxy_connect_timeout 5s;
+            proxy_send_timeout 5s;
+            proxy_read_timeout 5s;
             access_log off;
         }
     }

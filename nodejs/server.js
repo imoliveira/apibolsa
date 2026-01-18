@@ -1099,10 +1099,10 @@ async function fetchDollarFromInvesting() {
   }
 }
 
-// Cache para dados do dólar (atualizar a cada 10 segundos para testes)
+// Cache para dados do dólar (atualizar a cada 5 segundos para tempo real)
 let dollarCache = null;
 let dollarCacheTime = null;
-const DOLLAR_CACHE_TTL = 10000; // 10 segundos (reduzido para forçar atualizações)
+const DOLLAR_CACHE_TTL = 5000; // 5 segundos (reduzido para atualizações em tempo real)
 
 async function getDollarData() {
   const now = Date.now();
@@ -1232,6 +1232,413 @@ async function fetchEconomicCalendar() {
   }
 }
 
+// Função para buscar Treasuries do Investing.com
+async function fetchTreasuriesFromInvesting() {
+  try {
+    const url = 'https://www.investing.com/rates-bonds/usa-government-bonds';
+    console.log('🌐 Buscando Treasuries em:', url);
+    
+    const response = await axios.get(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9,pt-BR;q=0.8,pt;q=0.7',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1',
+        'Referer': 'https://br.investing.com/',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'same-origin'
+      },
+      timeout: 20000
+    });
+    
+    const $ = cheerio.load(response.data);
+    const treasuries = [];
+    
+    // Procurar pela tabela de Treasuries - Investing.com usa diferentes seletores
+    const tableSelectors = [
+      '#rates_bonds_table tbody tr',
+      'table.genTbl.openTbl.ratesTbl tbody tr',
+      'table#rates_bonds_table tbody tr',
+      'table.datatable tbody tr',
+      'table tbody tr[data-test="rates-row"]',
+      '.js-currency-table tbody tr',
+      'table.genTbl tbody tr',
+      'table tbody tr:has(td:first-child a)',
+      '[data-test="rates-table"] tbody tr',
+      '.rates-table tbody tr'
+    ];
+    
+    let foundRows = false;
+    for (const tableSelector of tableSelectors) {
+      const rows = $(tableSelector);
+      if (rows.length === 0) continue;
+      
+      console.log(`📋 Tentando seletor: ${tableSelector} (${rows.length} linhas encontradas)`);
+      
+      rows.each((index, element) => {
+        if (index >= 20) return false; // Limitar a 20 títulos
+      
+      const $row = $(element);
+      const cells = $row.find('td');
+      
+        if (cells.length < 4) return;
+        
+        // Log para debug - mostrar primeira linha completa
+        if (index === 0) {
+          console.log(`📊 Primeira linha encontrada com ${cells.length} células:`);
+          cells.each((i, cell) => {
+            console.log(`  Coluna ${i}: "${$(cell).text().trim()}"`);
+          });
+        }
+        
+        // Estrutura REAL do Investing.com para Treasuries (descoberta pelos logs):
+        // Coluna 0: "" (vazia)
+        // Coluna 1: Name (U.S. 1M, U.S. 3M, etc.)
+        // Coluna 2: Yield (rendimento atual)
+        // Coluna 3: Prev. (anterior)
+        // Coluna 4: High (máxima)
+        // Coluna 5: Low (mínima)
+        // Coluna 6: Chg. (variação absoluta)
+        // Coluna 7: Chg. % (variação percentual)
+        // Coluna 8: Time (data no formato 16/01)
+        
+        const nameCell = $row.find('td').eq(1); // Nome está na coluna 1 (coluna 0 é vazia)
+      const name = nameCell.find('a').text().trim() || nameCell.text().trim() || '';
+        
+        // Log para debug - mostrar primeira linha completa
+        if (index === 0) {
+          console.log(`📊 Primeira linha encontrada com ${cells.length} células:`);
+          cells.each((i, cell) => {
+            console.log(`  Coluna ${i}: "${$(cell).text().trim()}"`);
+          });
+        }
+        
+        // Pular linhas vazias ou de cabeçalho
+        if (!name || name.length < 3) {
+          if (index < 3) console.log(`⚠️  Linha ${index} pulada: nome vazio ou muito curto`);
+          return;
+        }
+        
+        // Verificar se é um título válido (deve conter "U.S." ou números com Month/Year)
+        if (!name.includes('U.S.') && !name.match(/\d+\s*(Month|Year|M|Y)/i) && !name.match(/^U\.S\./i)) {
+          if (index < 3) console.log(`⚠️  Linha ${index} pulada: nome "${name}" não é um título válido`);
+          return;
+        }
+        
+        console.log(`✅ Processando linha ${index}: ${name}`);
+        
+        // Função auxiliar para limpar valores numéricos
+        const cleanNumeric = (str) => {
+          if (!str) return '';
+          // Remover símbolos e manter apenas números, pontos, vírgulas e sinais
+          return str.replace(/[^\d.,+\-]/g, '').replace(/,/g, '').trim();
+        };
+        
+        // Extrair dados na ordem CORRETA do Investing.com (baseado nos logs):
+        // Coluna 0: "" (vazia)
+        // Coluna 1: Name (U.S. 1M, U.S. 3M, etc.)
+        // Coluna 2: Yield (rendimento atual)
+        // Coluna 3: Prev. (anterior)
+        // Coluna 4: High (máxima)
+        // Coluna 5: Low (mínima)
+        // Coluna 6: Chg. (variação absoluta)
+        // Coluna 7: Chg. % (variação percentual)
+        // Coluna 8: Time (data no formato 16/01)
+        let yieldValue = $row.find('td').eq(2).text().trim() || ''; // Coluna 2: Yield
+        let previous = $row.find('td').eq(3).text().trim() || ''; // Coluna 3: Prev
+        let high = $row.find('td').eq(4).text().trim() || ''; // Coluna 4: High
+        let low = $row.find('td').eq(5).text().trim() || ''; // Coluna 5: Low
+        let change = $row.find('td').eq(6).text().trim() || ''; // Coluna 6: Chg
+        let changePercent = $row.find('td').eq(7).text().trim() || ''; // Coluna 7: Chg%
+        let time = $row.find('td').eq(8).text().trim() || ''; // Coluna 8: Time
+        
+        // Se não encontrou dados nas posições esperadas, tentar buscar em todas as células
+        if (!yieldValue || !high || !low) {
+          // Buscar valores numéricos em todas as células
+          cells.each((i, cell) => {
+            const cellText = $(cell).text().trim();
+            const cellNum = parseFloat(cellText.replace(/[^\d.,+\-]/g, '').replace(/,/g, ''));
+            
+            // Se é um número válido entre 0.1 e 10, provavelmente é yield
+            if (!yieldValue && cellNum >= 0.1 && cellNum <= 10 && i > 0) {
+              yieldValue = cellText;
+            }
+            
+            // Se é maior que yield, pode ser high
+            if (yieldValue && cellNum > parseFloat(yieldValue.replace(/[^\d.,+\-]/g, '').replace(/,/g, ''))) {
+              if (!high || parseFloat(high.replace(/[^\d.,+\-]/g, '').replace(/,/g, '')) < cellNum) {
+                high = cellText;
+              }
+            }
+            
+            // Se é menor que yield mas maior que 0, pode ser low
+            if (yieldValue && cellNum < parseFloat(yieldValue.replace(/[^\d.,+\-]/g, '').replace(/,/g, '')) && cellNum > 0) {
+              if (!low || parseFloat(low.replace(/[^\d.,+\-]/g, '').replace(/,/g, '')) > cellNum) {
+                low = cellText;
+              }
+            }
+            
+            // Se contém + ou - e é um número pequeno, pode ser change
+            if ((cellText.includes('+') || cellText.includes('-')) && Math.abs(cellNum) < 1 && i > 2) {
+              if (!change) change = cellText;
+            }
+            
+            // Se contém % e é um número pequeno, pode ser changePercent
+            if (cellText.includes('%') && Math.abs(cellNum) < 100 && i > 2) {
+              if (!changePercent) changePercent = cellText;
+            }
+            
+            // Se tem formato de data (dd/mm ou dd/mm/yyyy), é time
+            if (cellText.match(/\d{1,2}\/\d{1,2}(\/\d{2,4})?/) && !time) {
+              time = cellText;
+            }
+          });
+        }
+        
+        // Se ainda não encontrou, tentar buscar por atributos data-*
+        let last = yieldValue;
+        if (!last) {
+          last = $row.attr('data-yield') || $row.find('[data-yield]').first().attr('data-yield') || '';
+        }
+        
+        if (!high) {
+          high = $row.attr('data-high') || $row.find('[data-high]').first().attr('data-high') || '';
+        }
+        
+        if (!low) {
+          low = $row.attr('data-low') || $row.find('[data-low]').first().attr('data-low') || '';
+        }
+      
+        // Limpar e formatar os dados
+        const cleanName = name.replace(/\s+/g, ' ').trim();
+        
+        // Log para debug da primeira linha válida
+        if (index === 0 && cleanName.includes('U.S.')) {
+          console.log(`📊 Dados extraídos da primeira linha:`);
+          console.log(`  Name: ${cleanName}`);
+          console.log(`  Yield: ${yieldValue}`);
+          console.log(`  High: ${high}`);
+          console.log(`  Low: ${low}`);
+          console.log(`  Change: ${change}`);
+          console.log(`  Change%: ${changePercent}`);
+          console.log(`  Time: ${time}`);
+        }
+        const cleanLast = cleanNumeric(last);
+        const cleanChange = cleanNumeric(change);
+        const cleanChangePercent = cleanNumeric(changePercent);
+        const cleanHigh = cleanNumeric(high);
+        const cleanLow = cleanNumeric(low);
+        
+        const value = parseFloat(cleanLast) || 0;
+        
+        // Log detalhado para debug
+        if (treasuries.length === 0) {
+          console.log(`📊 Dados extraídos da primeira linha válida:`);
+          console.log(`  Name: "${cleanName}"`);
+          console.log(`  Yield (raw): "${yieldValue}" -> (clean): "${cleanLast}" -> (parsed): ${value}`);
+          console.log(`  High (raw): "${high}" -> (clean): "${cleanHigh}"`);
+          console.log(`  Low (raw): "${low}" -> (clean): "${cleanLow}"`);
+          console.log(`  Change (raw): "${change}" -> (clean): "${cleanChange}"`);
+          console.log(`  Change% (raw): "${changePercent}" -> (clean): "${cleanChangePercent}"`);
+          console.log(`  Time: "${time}"`);
+        }
+        const changeValue = parseFloat(cleanChange) || 0;
+        const changePercentValue = parseFloat(cleanChangePercent) || 0;
+        
+        // Validar se temos pelo menos o valor principal
+        if (value === 0) {
+          console.log(`⚠️  Linha ${index} pulada: valor yield é zero ou inválido`);
+          return;
+        }
+        
+        // Extrair High e Low - são obrigatórios no Investing.com
+        let maxValue = parseFloat(cleanHigh);
+        let minValue = parseFloat(cleanLow);
+        
+        // Se não encontrou high/low, usar value como fallback mínimo
+        if (!maxValue || isNaN(maxValue)) {
+          maxValue = value;
+        }
+        if (!minValue || isNaN(minValue)) {
+          minValue = value;
+        }
+        
+        // Garantir que max >= value >= min
+        if (maxValue < value) maxValue = value;
+        if (minValue > value) minValue = value;
+        
+        // Formatar variação com sinal (já vem formatado do site, mas garantir)
+        let variationFormatted = change;
+        if (changeValue !== 0) {
+          variationFormatted = changeValue >= 0 ? 
+            `+${changeValue.toFixed(3)}` : changeValue.toFixed(3);
+        } else {
+          variationFormatted = '0.000';
+        }
+        
+        // Formatar percentual com sinal
+        let percentFormatted = changePercent;
+        if (changePercentValue !== 0) {
+          percentFormatted = changePercentValue >= 0 ? 
+          `+${changePercentValue.toFixed(2)}%` : `${changePercentValue.toFixed(2)}%`;
+        } else {
+          percentFormatted = '0.00%';
+        }
+        
+        // Extrair mês se disponível no nome (ex: "U.S. 2 Year" -> "2 Year" ou "U.S. 1M" -> "1M")
+        let mes = '';
+        const mesMatch = cleanName.match(/(\d+\s*(?:Month|Year|M|Y))/i);
+        if (mesMatch) {
+          mes = mesMatch[1].replace(/\s+/g, '');
+        }
+        
+        // Limpar e formatar time - pode vir como "16/01" (data) ou hora
+        let cleanTime = time.trim();
+        // Se não tem formato de hora, manter como está (pode ser data como "16/01")
+        if (!cleanTime.includes(':') && !cleanTime.match(/\d{2}\/\d{2}/)) {
+          // Se não tem formato conhecido, deixar vazio
+          cleanTime = '';
+        }
+        
+        // Extrair Previous (Prev.) da coluna 3
+        const previousValue = parseFloat(cleanNumeric(previous)) || value;
+        
+        // Log para debug
+        if (treasuries.length === 0) {
+          console.log(`📊 Dados finais do primeiro Treasury:`);
+          console.log(`  Name: "${cleanName}"`);
+          console.log(`  Yield: ${value.toFixed(3)}`);
+          console.log(`  Prev.: ${previousValue.toFixed(3)}`);
+          console.log(`  High: ${maxValue.toFixed(3)}`);
+          console.log(`  Low: ${minValue.toFixed(3)}`);
+          console.log(`  Chg.: ${variationFormatted}`);
+          console.log(`  Chg.%: ${percentFormatted}`);
+          console.log(`  Time: "${cleanTime}"`);
+        }
+        
+          treasuries.push({
+            name: cleanName,
+            mes: mes,
+          value: value.toFixed(3), // 3 casas decimais como no Investing.com - Yield
+          previous: previousValue.toFixed(3), // Prev. (anterior)
+          max: maxValue.toFixed(3), // 3 casas decimais - High
+          min: minValue.toFixed(3), // 3 casas decimais - Low
+          variation: variationFormatted, // Chg.
+          percent: percentFormatted, // Chg.%
+          time: cleanTime || '' // Time
+          });
+          
+          foundRows = true;
+      });
+      
+      if (foundRows && treasuries.length > 0) {
+        console.log(`✅ Treasuries encontrados com seletor ${tableSelector}: ${treasuries.length} títulos`);
+        break;
+      }
+    }
+    
+    // Se não encontrou na estrutura de tabela, tentar buscar em scripts JSON
+    if (treasuries.length === 0) {
+      console.log('⚠️  Tentando buscar dados em scripts JSON...');
+      const scripts = $('script').toArray();
+      
+      for (const script of scripts) {
+        const scriptContent = $(script).html() || '';
+        
+        // Procurar por dados JSON no script
+        const jsonMatches = [
+          scriptContent.match(/window\.__INITIAL_STATE__\s*=\s*({.+?});/),
+          scriptContent.match(/var\s+bondsData\s*=\s*(\[.+?\]);/),
+          scriptContent.match(/data:\s*(\[.+?\])/),
+          scriptContent.match(/bondsData\s*[:=]\s*(\[.+?\])/),
+          scriptContent.match(/treasuries\s*[:=]\s*(\[.+?\])/),
+          scriptContent.match(/ratesData\s*[:=]\s*(\[.+?\])/),
+          scriptContent.match(/__NEXT_DATA__.*?"bonds":(\[.+?\])/),
+        ];
+        
+        for (const jsonMatch of jsonMatches) {
+          if (jsonMatch) {
+            try {
+              const data = JSON.parse(jsonMatch[1]);
+              // Tentar extrair dados dos bonds
+              const bondsData = Array.isArray(data) ? data : (data.bonds || data.rates || data.treasuries || data.data || []);
+              if (Array.isArray(bondsData)) {
+                bondsData.forEach(bond => {
+                  if (bond.name || bond.title || bond.symbol) {
+                    const name = bond.name || bond.title || bond.symbol || '';
+                    const value = parseFloat(bond.value || bond.last || bond.price || bond.yield || bond.close || 0);
+                    const change = parseFloat(bond.change || bond.variation || bond.chg || 0);
+                    const changePercent = parseFloat(bond.changePercent || bond.percent || bond.chgPercent || bond.pctChange || 0);
+                    const high = parseFloat(bond.max || bond.high || bond.h || 0);
+                    const low = parseFloat(bond.min || bond.low || bond.l || 0);
+                    
+                    // Verificar se é um título válido
+                    if (name && (name.includes('U.S.') || name.match(/\d+\s*(Month|Year|M|Y)/i))) {
+                      const maxValue = high || value;
+                      const minValue = low || value;
+                      
+                      // Se max e min são iguais ao value e temos change, calcular aproximado
+                      let finalMax = maxValue;
+                      let finalMin = minValue;
+                      if (maxValue === value && minValue === value && change !== 0) {
+                        finalMax = value + Math.abs(change * 0.5);
+                        finalMin = value - Math.abs(change * 0.5);
+                      }
+                      
+                      treasuries.push({
+                        name: name,
+                        mes: bond.mes || bond.month || bond.maturity || '',
+                        value: value.toFixed(3), // 3 casas decimais
+                        previous: (bond.previous || bond.prev || value).toFixed(3), // Prev.
+                        max: finalMax.toFixed(3), // 3 casas decimais
+                        min: finalMin.toFixed(3), // 3 casas decimais
+                        variation: change >= 0 ? `+${change.toFixed(3)}` : change.toFixed(3),
+                        percent: changePercent >= 0 ? `+${changePercent.toFixed(2)}%` : `${changePercent.toFixed(2)}%`,
+                        time: bond.time || bond.lastUpdate || ''
+                      });
+                    }
+                  }
+                });
+                if (treasuries.length > 0) break;
+              }
+            } catch (e) {
+              console.log('⚠️  Erro ao parsear JSON:', e.message);
+            }
+          }
+        }
+        if (treasuries.length > 0) break;
+      }
+    }
+    
+    if (treasuries.length > 0) {
+      console.log(`✅ Treasuries obtidos: ${treasuries.length} títulos`);
+      // Log completo do primeiro Treasury para debug - garantir que previous está presente
+      const firstTreasury = treasuries[0];
+      console.log('📊 Primeiro Treasury exemplo completo:', JSON.stringify({
+        name: firstTreasury.name,
+        mes: firstTreasury.mes,
+        value: firstTreasury.value,
+        previous: firstTreasury.previous || 'N/A',
+        max: firstTreasury.max,
+        min: firstTreasury.min,
+        variation: firstTreasury.variation,
+        percent: firstTreasury.percent,
+        time: firstTreasury.time
+      }, null, 2));
+      return treasuries;
+    } else {
+      console.log('⚠️  Não foi possível extrair Treasuries, usando dados mockados');
+      return null; // Retornar null para usar dados mockados
+    }
+  } catch (error) {
+    console.error('❌ Erro ao buscar Treasuries do Investing.com:', error.message);
+    return null; // Retornar null para usar dados mockados
+  }
+}
+
 // Função para gerar calendário econômico mockado (fallback)
 function generateMockEconomicCalendar() {
   const now = new Date();
@@ -1316,57 +1723,328 @@ async function fetchBrazilianRealFromCME() {
   try {
     const url = 'https://www.cmegroup.com/markets/fx/emerging-market/brazilian-real.quotes.html';
     console.log('🌐 Buscando dados do Brazilian Real em:', url);
+    console.log('📅 Timestamp da busca:', new Date().toISOString());
     
     const response = await axios.get(url, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-        'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
+        'Accept-Language': 'en-US,en;q=0.9,pt-BR;q=0.8,pt;q=0.7',
         'Accept-Encoding': 'gzip, deflate, br',
         'Connection': 'keep-alive',
-        'Upgrade-Insecure-Requests': '1'
+        'Upgrade-Insecure-Requests': '1',
+        'Referer': 'https://www.cmegroup.com/'
       },
-      timeout: 15000
+      timeout: 20000
     });
+    
+    console.log(`✅ Resposta recebida do CME Group: ${response.status} ${response.statusText}`);
+    console.log(`📄 Tamanho da resposta: ${response.data.length} caracteres`);
     
     const $ = cheerio.load(response.data);
     const contracts = [];
     
-    // Buscar contratos futuros do Brazilian Real
-    // CME Group geralmente usa tabelas com dados de contratos
-    $('table.quotes-table tbody tr, .quotes-table tbody tr, table tbody tr').each((index, element) => {
-      if (index >= 10) return false; // Limitar a 10 contratos
+    // Verificar quantas tabelas foram encontradas
+    const tableCount = $('table').length;
+    console.log(`📊 Total de tabelas encontradas na página: ${tableCount}`);
+    
+    // Se não encontrou tabelas, pode ser que os dados estejam em divs ou scripts
+    if (tableCount === 0) {
+      console.log('⚠️  Nenhuma tabela encontrada, procurando em divs e scripts...');
+      // Procurar por divs que possam conter dados de contratos
+      const dataDivs = $('[class*="quote"], [class*="contract"], [class*="row"], [data-contract], [data-symbol]');
+      console.log(`📊 Divs com dados encontradas: ${dataDivs.length}`);
+    }
+    
+    // Procurar pela tabela de contratos - CME Group usa diferentes seletores
+    // Priorizar seletores mais específicos primeiro
+    const tableSelectors = [
+      'table tbody tr', // Seletor mais genérico primeiro
+      'table.quotes-table tbody tr',
+      '.quotes-table tbody tr',
+      'table.genTbl tbody tr',
+      'table.quotes tbody tr',
+      '[data-test="quotes-table"] tbody tr',
+      '.contract-table tbody tr',
+      '.market-data-table tbody tr',
+      '[class*="quote"] tbody tr',
+      '[class*="contract"] tbody tr',
+      'tbody tr[data-contract]',
+      'tr[data-symbol]',
+      'div[class*="quote-row"]',
+      'div[class*="contract-row"]'
+    ];
+    
+    let foundRows = false;
+    for (const tableSelector of tableSelectors) {
+      const rows = $(tableSelector);
+      if (rows.length === 0) continue;
       
-      const $el = $(element);
-      const cells = $el.find('td');
+      console.log(`📋 Tentando seletor Brazilian Real: ${tableSelector} (${rows.length} linhas encontradas)`);
       
-      if (cells.length >= 5) {
-        const contract = cells.eq(0).text().trim() || '';
-        const last = cells.eq(1).text().trim() || '';
-        const change = cells.eq(2).text().trim() || '';
-        const changePercent = cells.eq(3).text().trim() || '';
-        const volume = cells.eq(4).text().trim() || '';
-        const openInterest = cells.eq(5) ? cells.eq(5).text().trim() : '';
+      // Verificar se é uma tabela de dados (não header)
+      rows.each((index, element) => {
+        if (index >= 15) return false; // Limitar a 15 contratos
         
-        if (contract && last) {
-          // Extrair valores numéricos
-          const lastValue = last.replace(/[^\d.,-]/g, '').replace(',', '');
-          const changeValue = change.replace(/[^\d.,+\-]/g, '').replace(',', '');
-          const changePercentValue = changePercent.replace(/[^\d.,+\-%]/g, '').replace(',', '');
-          
-          contracts.push({
-            name: contract || 'BRL/USD',
-            mes: contract.includes('Mar') ? 'Mar' : contract.includes('Jun') ? 'Jun' : contract.includes('Sep') ? 'Sep' : contract.includes('Dec') ? 'Dec' : '',
-            value: lastValue || '0.00',
-            variation: changeValue || '0.00',
-            percent: changePercentValue ? (changePercentValue.includes('%') ? changePercentValue : changePercentValue + '%') : '0.00%',
-            volume: volume || '0',
-            openInterest: openInterest || '0',
-            time: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+        const $row = $(element);
+        const cells = $row.find('td');
+        
+        if (cells.length < 5) {
+          // Pode ser header ou linha vazia
+          if (index < 2) {
+            console.log(`⚠️  Linha ${index} pulada: apenas ${cells.length} células (provavelmente header)`);
+          }
+          return;
+        }
+        
+        // Log para debug - mostrar primeiras 3 linhas completas
+        if (index < 3 && contracts.length === 0) {
+          console.log(`📊 Linha ${index} Brazilian Real encontrada com ${cells.length} células:`);
+          cells.each((i, cell) => {
+            const cellText = $(cell).text().trim();
+            const cellHtml = $(cell).html();
+            console.log(`  Coluna ${i}: "${cellText}"`);
+            if (cellText.length === 0 && cellHtml && cellHtml.length < 200) {
+              console.log(`    HTML: ${cellHtml}`);
+            }
           });
         }
+        
+        // Estrutura REAL do CME Group conforme a tabela:
+        // Coluna 0: MONTH (FEB 2026 6LG6)
+        // Coluna 1: OPTIONS (botão)
+        // Coluna 2: CHART (ícone)
+        // Coluna 3: LAST (0.1856)
+        // Coluna 4: CHANGE (-0.00035 (-0.19%))
+        // Coluna 5: PRIOR SETTLE (-)
+        // Coluna 6: OPEN (0.18595)
+        // Coluna 7: HIGH (0.1861)
+        // Coluna 8: LOW (0.1848)
+        // Coluna 9: VOLUME (12,080)
+        // Coluna 10: UPDATED (15:58:02 CT)
+        
+        // Extrair dados na ordem das colunas da tabela CME Group
+        let month = cells.eq(0).text().trim() || '';
+        let last = cells.eq(3).text().trim() || ''; // Coluna 3: LAST
+        let change = cells.eq(4).text().trim() || ''; // Coluna 4: CHANGE
+        let priorSettle = cells.eq(5).text().trim() || ''; // Coluna 5: PRIOR SETTLE
+        let open = cells.eq(6).text().trim() || ''; // Coluna 6: OPEN
+        let high = cells.eq(7).text().trim() || ''; // Coluna 7: HIGH
+        let low = cells.eq(8).text().trim() || ''; // Coluna 8: LOW
+        let volume = cells.eq(9).text().trim() || ''; // Coluna 9: VOLUME
+        let updated = cells.eq(10).text().trim() || ''; // Coluna 10: UPDATED
+        
+        // Se não encontrou nas posições esperadas, tentar buscar por conteúdo
+        if (!month || !last) {
+          // Tentar encontrar MONTH procurando por padrões específicos
+          if (!month) {
+            cells.each((i, cell) => {
+              const cellText = $(cell).text().trim();
+              // Procurar por "FEB 2026" ou código GLOBEX como "6LG6"
+              if (cellText.match(/[A-Z]{3}\s+\d{4}/) || cellText.match(/\d{1}[A-Z]{2}\d{1}/)) {
+                month = cellText;
+                return false; // Parar iteração
+              }
+            });
+          }
+        }
+        
+        // Se não encontrou nas posições esperadas, tentar buscar em todas as células
+        if (!last || !change) {
+          cells.each((i, cell) => {
+            const cellText = $(cell).text().trim();
+            
+            // MONTH: pode conter "FEB 2026" ou "6LG6"
+            if (!month && (cellText.match(/[A-Z]{3}\s+\d{4}/) || cellText.match(/^\d{1}[A-Z]{2}\d{1}$/))) {
+              month = cellText;
+            }
+            
+            // LAST: número decimal com 4 casas (ex: 0.1856)
+            if (!last && cellText.match(/^\d+\.\d{4}$/)) {
+              last = cellText;
+            }
+            
+            // CHANGE: pode vir como "-0.00035 (-0.19%)"
+            if (!change && cellText.includes('(') && cellText.includes('%)')) {
+              change = cellText;
+            }
+            
+            // OPEN: número decimal com 4-5 casas
+            if (!open && cellText.match(/^\d+\.\d{4,5}$/) && cellText !== last) {
+              open = cellText;
+            }
+            
+            // HIGH: número decimal maior que LAST
+            if (!high && cellText.match(/^\d+\.\d{4}$/)) {
+              const num = parseFloat(cellText);
+              if (num > parseFloat(last || '0')) {
+                high = cellText;
+              }
+            }
+            
+            // LOW: número decimal menor que LAST
+            if (!low && cellText.match(/^\d+\.\d{4}$/)) {
+              const num = parseFloat(cellText);
+              if (num < parseFloat(last || '999') && num > 0) {
+                low = cellText;
+              }
+            }
+            
+            // VOLUME: número grande com vírgula (ex: 12,080)
+            if (!volume && cellText.match(/^\d{1,3}(,\d{3})*$/)) {
+              volume = cellText;
+            }
+            
+            // UPDATED: formato de hora/data
+            if (!updated && (cellText.match(/\d{2}:\d{2}:\d{2}/) || cellText.match(/\d{2}\s+[A-Z]{3}\s+\d{4}/))) {
+              updated = cellText;
+            }
+          });
+        }
+        
+        // Extrair código GLOBEX do MONTH (ex: "FEB 2026 6LG6" -> "6LG6")
+        let contract = '';
+        let mes = '';
+        if (month) {
+          const globexMatch = month.match(/(\d{1}[A-Z]{2}\d{1})/);
+          if (globexMatch) {
+            contract = globexMatch[1];
+          }
+          const monthMatch = month.match(/([A-Z]{3})\s+\d{4}/);
+          if (monthMatch) {
+            mes = monthMatch[1];
+          }
+        }
+        
+        // Se não encontrou contrato válido, pular
+        if (!contract && !month) {
+          if (index < 3) console.log(`⚠️  Linha ${index} pulada: não encontrou código GLOBEX ou MONTH`);
+          return;
+        }
+        
+        // Se não tem LAST válido, pular
+        if (!last || parseFloat(last) === 0) {
+          if (index < 3) console.log(`⚠️  Linha ${index} pulada: LAST inválido`);
+          return;
+        }
+        
+        // Função auxiliar para limpar valores numéricos
+        const cleanNumeric = (str) => {
+          if (!str) return '';
+          return str.replace(/[^\d.,+\-]/g, '').replace(/,/g, '').trim();
+        };
+        
+        // Processar CHANGE que pode vir como "-0.00035 (-0.19%)"
+        let changeValue = change;
+        let changePercentValue = changePercent;
+        
+        // Se change contém o percentual entre parênteses, extrair ambos
+        if (change && change.includes('(') && change.includes('%)')) {
+          const changeMatch = change.match(/([+-]?\d+\.?\d*)\s*\(([+-]?\d+\.?\d*)%\)/);
+          if (changeMatch) {
+            changeValue = changeMatch[1];
+            changePercentValue = changeMatch[2];
+          }
+        }
+        
+          // Extrair valores numéricos
+        const lastValue = cleanNumeric(last);
+        const openValue = cleanNumeric(open);
+        const changeNum = parseFloat(cleanNumeric(changeValue)) || 0;
+        const changePercentNum = parseFloat(cleanNumeric(changePercentValue)) || 0;
+        const highValue = cleanNumeric(high);
+        const lowValue = cleanNumeric(low);
+        
+        const value = parseFloat(lastValue) || 0;
+        const openNum = parseFloat(openValue) || value;
+        
+        if (value === 0) {
+          if (index < 3) console.log(`⚠️  Linha ${index} pulada: valor LAST é zero ou inválido`);
+          return; // Pular se não tem valor válido
+        }
+        
+        // Calcular max e min
+        let maxValue = parseFloat(highValue) || value;
+        let minValue = parseFloat(lowValue) || value;
+        
+        // Se max e min são iguais ao value, tentar calcular baseado na variação
+        if (maxValue === value && minValue === value && changeNum !== 0) {
+          maxValue = value + Math.abs(changeNum * 0.5);
+          minValue = value - Math.abs(changeNum * 0.5);
+        }
+        
+        // Garantir que max >= value >= min
+        if (maxValue < value) maxValue = value;
+        if (minValue > value) minValue = value;
+        
+        // Formatar variação com sinal (4 casas decimais) - manter formato original se possível
+        let variationFormatted = change;
+        if (changeNum !== 0 && !variationFormatted.includes('(')) {
+          variationFormatted = changeNum >= 0 ? 
+            `+${changeNum.toFixed(4)}` : changeNum.toFixed(4);
+        }
+        
+        // Formatar percentual com sinal - manter formato original se possível
+        let percentFormatted = changePercent || (changePercentNum !== 0 ? 
+          (changePercentNum >= 0 ? `+${changePercentNum.toFixed(2)}%` : `${changePercentNum.toFixed(2)}%`) : '0.00%');
+        
+        // Se CHANGE já contém o percentual, usar ele
+        if (change && change.includes('(') && change.includes('%)')) {
+          variationFormatted = change;
+          // Extrair apenas o percentual para campo separado
+          const changeMatch = change.match(/\(([+-]?\d+\.?\d*)%\)/);
+          if (changeMatch) {
+            percentFormatted = changeMatch[1];
+            if (!percentFormatted.startsWith('+') && !percentFormatted.startsWith('-')) {
+              percentFormatted = changeNum >= 0 ? `+${percentFormatted}%` : `${percentFormatted}%`;
+            } else {
+              percentFormatted = percentFormatted + '%';
+            }
+          }
+        }
+        
+        // Limpar e formatar time
+        let cleanTime = updated.trim() || time.trim();
+        if (!cleanTime) {
+          cleanTime = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        }
+        
+        // Log para debug da primeira linha válida
+        if (contracts.length === 0) {
+          console.log(`📊 Dados extraídos da primeira linha Brazilian Real:`);
+          console.log(`  MONTH: "${month}" -> Contract: "${contract}", Mês: "${mes}"`);
+          console.log(`  LAST: "${last}" -> ${value}`);
+          console.log(`  CHANGE: "${change}" -> ${variationFormatted}`);
+          console.log(`  OPEN: "${open}" -> ${openNum}`);
+          console.log(`  HIGH: "${high}" -> ${maxValue}`);
+          console.log(`  LOW: "${low}" -> ${minValue}`);
+          console.log(`  VOLUME: "${volume}"`);
+          console.log(`  UPDATED: "${updated}"`);
+        }
+          
+          contracts.push({
+          name: contract || month || 'BRL/USD',
+          mes: mes,
+          value: value.toFixed(4), // 4 casas decimais como na CME Group
+          max: maxValue.toFixed(4),
+          min: minValue.toFixed(4),
+          open: openNum.toFixed(4),
+          priorSettle: priorSettle || '-',
+          variation: variationFormatted,
+          percent: percentFormatted,
+            volume: volume || '0',
+            openInterest: openInterest || '0',
+          time: cleanTime
+        });
+        
+        foundRows = true;
+      });
+      
+      if (foundRows && contracts.length > 0) {
+        console.log(`✅ Brazilian Real encontrados com seletor ${tableSelector}: ${contracts.length} contratos`);
+        break;
       }
-    });
+    }
     
     // Se não encontrou na tabela, tentar buscar em divs ou outras estruturas
     if (contracts.length === 0) {
@@ -1398,12 +2076,302 @@ async function fetchBrazilianRealFromCME() {
     
     if (contracts.length > 0) {
       console.log(`✅ Dados do Brazilian Real obtidos: ${contracts.length} contratos`);
+      console.log(`📊 Primeiro contrato exemplo:`, JSON.stringify(contracts[0], null, 2));
       return {
         success: true,
         contracts: contracts
       };
     } else {
-      console.log('⚠️  Não foi possível extrair dados do Brazilian Real');
+      console.log('⚠️  Não foi possível extrair dados do Brazilian Real da página');
+      console.log('💡 Tentando buscar em scripts JSON...');
+      
+      // Tentar buscar em scripts JSON
+      console.log('💡 Buscando dados em scripts JSON...');
+      const scripts = $('script').toArray();
+      console.log(`📜 Total de scripts encontrados: ${scripts.length}`);
+      
+      // Primeiro, tentar encontrar dados em scripts que contenham "6LG" ou "brazilian"
+      let foundInScripts = false;
+      
+      for (let scriptIndex = 0; scriptIndex < scripts.length; scriptIndex++) {
+        const script = scripts[scriptIndex];
+        const scriptContent = $(script).html() || '';
+        
+        if (!scriptContent || scriptContent.length < 50) continue;
+        
+        // Verificar se contém referências ao Brazilian Real
+        const hasBrazilianReal = scriptContent.includes('6LG') || 
+                                 scriptContent.includes('brazilian') || 
+                                 scriptContent.includes('Brazilian') ||
+                                 scriptContent.includes('Brazilian Real') ||
+                                 scriptContent.match(/6L[GHJKMNQUVXZ]\d/); // Padrão de códigos GLOBEX
+        
+        if (hasBrazilianReal) {
+          console.log(`📜 Script ${scriptIndex} contém referências ao Brazilian Real (${scriptContent.length} caracteres)`);
+          
+          // Tentar extrair dados usando diferentes padrões
+          // Padrão 1: Array de objetos com dados de contratos
+          const arrayPattern = /\[[\s\S]{0,5000}\{[^}]*"symbol"[^}]*"6L[GHJKMNQUVXZ]\d[^}]*\}[\s\S]{0,5000}\]/;
+          const arrayMatch = scriptContent.match(arrayPattern);
+          if (arrayMatch) {
+            console.log(`📊 Possível array encontrado (${arrayMatch[0].length} caracteres)`);
+            try {
+              // Tentar encontrar o contexto completo do array
+              const contextMatch = scriptContent.match(/(?:contracts|quotes|data|instruments|products)\s*[:=]\s*(\[[\s\S]{0,10000}\])/);
+              if (contextMatch) {
+                const parsed = JSON.parse(contextMatch[1]);
+                if (Array.isArray(parsed) && parsed.length > 0) {
+                  console.log(`✅ Array válido encontrado com ${parsed.length} itens`);
+                  parsed.forEach(item => {
+                    if (item.symbol && item.symbol.match(/6L[GHJKMNQUVXZ]\d/)) {
+                      const value = parseFloat(item.last || item.price || item.settle || 0);
+                      const change = parseFloat(item.change || item.netChange || 0);
+                      const changePercent = parseFloat(item.changePercent || item.pctChange || 0);
+                      const high = parseFloat(item.high || item.max || value);
+                      const low = parseFloat(item.low || item.min || value);
+                      
+                      if (value > 0) {
+                        contracts.push({
+                          name: item.symbol,
+                          mes: item.month || item.maturity || item.expiration || '',
+                          value: value.toFixed(4),
+                          max: high.toFixed(4),
+                          min: low.toFixed(4),
+                          variation: change >= 0 ? `+${change.toFixed(4)}` : change.toFixed(4),
+                          percent: changePercent >= 0 ? `+${changePercent.toFixed(2)}%` : `${changePercent.toFixed(2)}%`,
+                          volume: item.volume || '0',
+                          openInterest: item.openInterest || '0',
+                          open: (item.open || value).toFixed(4),
+                          priorSettle: item.priorSettle || '-',
+                          time: item.time || item.lastUpdate || ''
+                        });
+                      }
+                    }
+                  });
+                  if (contracts.length > 0) {
+                    foundInScripts = true;
+                    break;
+                  }
+                }
+              }
+            } catch (e) {
+              console.log(`⚠️  Erro ao parsear array: ${e.message}`);
+            }
+          }
+          
+          // Padrão 2: Objeto com propriedades que contêm arrays
+          const objectPattern = /\{[^}]*"(?:contracts|quotes|data|instruments|products)"\s*:\s*(\[[\s\S]{0,10000}\])[^}]*\}/;
+          const objectMatch = scriptContent.match(objectPattern);
+          if (objectMatch && !foundInScripts) {
+            try {
+              const parsed = JSON.parse(objectMatch[0]);
+              const dataArray = parsed.contracts || parsed.quotes || parsed.data || parsed.instruments || parsed.products || [];
+              if (Array.isArray(dataArray) && dataArray.length > 0) {
+                console.log(`✅ Objeto com array encontrado: ${dataArray.length} itens`);
+                dataArray.forEach(item => {
+                  if (item.symbol && item.symbol.match(/6L[GHJKMNQUVXZ]\d/)) {
+                    const value = parseFloat(item.last || item.price || item.settle || 0);
+                    if (value > 0) {
+                      contracts.push({
+                        name: item.symbol,
+                        mes: item.month || item.maturity || '',
+                        value: value.toFixed(4),
+                        max: (item.high || value).toFixed(4),
+                        min: (item.low || value).toFixed(4),
+                        variation: (item.change || 0) >= 0 ? `+${(item.change || 0).toFixed(4)}` : (item.change || 0).toFixed(4),
+                        percent: (item.changePercent || 0) >= 0 ? `+${(item.changePercent || 0).toFixed(2)}%` : `${(item.changePercent || 0).toFixed(2)}%`,
+                        volume: item.volume || '0',
+                        openInterest: item.openInterest || '0',
+                        open: (item.open || value).toFixed(4),
+                        priorSettle: item.priorSettle || '-',
+                        time: item.time || ''
+                      });
+                    }
+                  }
+                });
+                if (contracts.length > 0) {
+                  foundInScripts = true;
+                  break;
+                }
+              }
+            } catch (e) {
+              console.log(`⚠️  Erro ao parsear objeto: ${e.message}`);
+            }
+          }
+        }
+      }
+      
+      // Se ainda não encontrou, tentar padrões mais genéricos e buscar diretamente valores numéricos
+      if (!foundInScripts) {
+        console.log('💡 Tentando padrões alternativos de extração...');
+        
+        // Tentar encontrar valores diretamente no HTML usando padrões específicos do CME Group
+        // Procurar por padrões como: "6LG6", "0.1856", "-0.00035", etc.
+        const htmlContent = response.data;
+        
+        // Padrão: encontrar código GLOBEX seguido de valores próximos
+        const globexPattern = /(6L[GHJKMNQUVXZ]\d)[\s\S]{0,500}?(\d+\.\d{4})[\s\S]{0,200}?([+-]?\d+\.\d{5})[\s\S]{0,200}?\(([+-]?\d+\.?\d*)%\)/g;
+        let match;
+        const foundContracts = new Map();
+        
+        while ((match = globexPattern.exec(htmlContent)) !== null && foundContracts.size < 10) {
+          const symbol = match[1];
+          const last = match[2];
+          const change = match[3];
+          const changePercent = match[4];
+          
+          if (!foundContracts.has(symbol) && parseFloat(last) > 0) {
+            foundContracts.set(symbol, {
+              name: symbol,
+              mes: symbol.substring(0, 3) + ' 2026', // Aproximação
+              value: parseFloat(last).toFixed(4),
+              max: (parseFloat(last) + 0.001).toFixed(4),
+              min: (parseFloat(last) - 0.001).toFixed(4),
+              variation: parseFloat(change) >= 0 ? `+${parseFloat(change).toFixed(4)}` : parseFloat(change).toFixed(4),
+              percent: parseFloat(changePercent) >= 0 ? `+${parseFloat(changePercent).toFixed(2)}%` : `${parseFloat(changePercent).toFixed(2)}%`,
+              volume: '0',
+              openInterest: '0',
+              open: parseFloat(last).toFixed(4),
+              priorSettle: '-',
+              time: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+            });
+          }
+        }
+        
+        if (foundContracts.size > 0) {
+          console.log(`✅ Encontrados ${foundContracts.size} contratos usando padrões de texto`);
+          contracts = Array.from(foundContracts.values());
+          foundInScripts = true;
+        }
+      }
+      
+      // Última tentativa: buscar em todos os scripts com padrões mais genéricos
+      if (!foundInScripts) {
+        for (let scriptIndex = 0; scriptIndex < scripts.length; scriptIndex++) {
+          const script = scripts[scriptIndex];
+          const scriptContent = $(script).html() || '';
+          
+          if (!scriptContent || scriptContent.length < 100) continue;
+        
+          // Procurar por dados JSON no script com padrões mais amplos
+          const jsonMatches = [
+            scriptContent.match(/contracts\s*[:=]\s*(\[.+?\])/),
+            scriptContent.match(/quotes\s*[:=]\s*(\[.+?\])/),
+            scriptContent.match(/data\s*[:=]\s*(\[.+?\])/),
+            scriptContent.match(/__NEXT_DATA__.*?"contracts":(\[.+?\])/),
+            scriptContent.match(/brazilianReal\s*[:=]\s*(\[.+?\])/i),
+            scriptContent.match(/brazilian.*real.*\[(.+?)\]/is),
+            scriptContent.match(/6LG[0-9A-Z].*?(\d+\.\d{4})/), // Buscar código GLOBEX seguido de valor
+            scriptContent.match(/"symbol"\s*:\s*"6LG[0-9A-Z]".*?(\{[^}]+\})/), // Buscar objeto com símbolo 6LG
+          ];
+          
+          // Também tentar buscar objetos JSON completos
+          try {
+            // Procurar por objetos que contenham "6LG" ou "brazilian"
+            if (scriptContent.includes('6LG') || scriptContent.includes('brazilian') || scriptContent.includes('Brazilian')) {
+              console.log(`📜 Script ${scriptIndex} contém referências a Brazilian Real (${scriptContent.length} caracteres)`);
+              
+              // Tentar extrair objetos JSON que contenham esses termos
+              const jsonObjectMatches = scriptContent.match(/\{[\s\S]*?"symbol"[\s\S]*?"6LG[\s\S]*?\}/g);
+              if (jsonObjectMatches) {
+                console.log(`📊 Encontrados ${jsonObjectMatches.length} possíveis objetos JSON`);
+              }
+              
+              // Tentar encontrar arrays de objetos com dados de contratos
+              // Padrão comum: [{symbol: "6LG6", last: 0.1856, ...}, ...]
+              const arrayPattern = /\[[\s\S]*?\{[\s\S]*?"symbol"[\s\S]*?"6LG[\s\S]*?\}[\s\S]*?\]/;
+              const arrayMatch = scriptContent.match(arrayPattern);
+              if (arrayMatch) {
+                console.log(`📊 Possível array de contratos encontrado (${arrayMatch[0].length} caracteres)`);
+                try {
+                  const parsed = JSON.parse(arrayMatch[0]);
+                  if (Array.isArray(parsed) && parsed.length > 0) {
+                    console.log(`✅ Array válido encontrado com ${parsed.length} itens`);
+                    jsonMatches.push(arrayMatch);
+                  }
+                } catch (e) {
+                  console.log(`⚠️  Erro ao parsear array: ${e.message}`);
+                }
+              }
+              
+              // Tentar encontrar window.__INITIAL_STATE__ ou similar
+              const initialStateMatch = scriptContent.match(/window\.__INITIAL_STATE__\s*=\s*(\{[\s\S]*?\});/);
+              if (initialStateMatch) {
+                console.log(`📊 window.__INITIAL_STATE__ encontrado`);
+                try {
+                  const state = JSON.parse(initialStateMatch[1]);
+                  // Procurar por dados de contratos no estado
+                  if (state.contracts || state.quotes || state.data) {
+                    console.log(`✅ Dados encontrados em __INITIAL_STATE__`);
+                    jsonMatches.push(initialStateMatch);
+                  }
+                } catch (e) {
+                  console.log(`⚠️  Erro ao parsear __INITIAL_STATE__: ${e.message}`);
+                }
+              }
+            }
+          } catch (e) {
+            console.log(`⚠️  Erro ao processar script ${scriptIndex}: ${e.message}`);
+          }
+          
+          for (const jsonMatch of jsonMatches) {
+            if (jsonMatch) {
+              try {
+                const data = JSON.parse(jsonMatch[1]);
+                const contractsData = Array.isArray(data) ? data : (data.contracts || data.quotes || []);
+                if (Array.isArray(contractsData) && contractsData.length > 0) {
+                  console.log(`✅ Encontrados ${contractsData.length} contratos em JSON`);
+                  // Processar dados JSON
+                  contractsData.forEach(contract => {
+                    if (contract.symbol || contract.name) {
+                      const name = contract.symbol || contract.name || 'BRL/USD';
+                      const value = parseFloat(contract.last || contract.price || contract.value || 0);
+                      const change = parseFloat(contract.change || contract.netChange || 0);
+                      const changePercent = parseFloat(contract.changePercent || contract.pctChange || 0);
+                      const high = parseFloat(contract.high || contract.max || value);
+                      const low = parseFloat(contract.low || contract.min || value);
+                      
+                      if (value > 0) {
+                        contracts.push({
+                          name: name,
+                          mes: contract.month || contract.maturity || '',
+                          value: value.toFixed(4),
+                          max: high.toFixed(4),
+                          min: low.toFixed(4),
+                          variation: change >= 0 ? `+${change.toFixed(4)}` : change.toFixed(4),
+                          percent: changePercent >= 0 ? `+${changePercent.toFixed(2)}%` : `${changePercent.toFixed(2)}%`,
+                          volume: contract.volume || '0',
+                          openInterest: contract.openInterest || '0',
+                          open: (contract.open || value).toFixed(4),
+                          priorSettle: contract.priorSettle || '-',
+                          time: contract.time || new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+                        });
+                      }
+                    }
+                  });
+                  if (contracts.length > 0) {
+                    foundInScripts = true;
+                    break;
+                  }
+                }
+              } catch (e) {
+                console.log('⚠️  Erro ao parsear JSON:', e.message);
+              }
+            }
+          }
+          if (foundInScripts) break;
+        }
+      }
+      
+      if (contracts.length > 0) {
+        console.log(`✅ Dados do Brazilian Real obtidos via JSON: ${contracts.length} contratos`);
+        return {
+          success: true,
+          contracts: contracts
+        };
+      }
+      
+      console.log('⚠️  Não foi possível extrair dados do Brazilian Real, usando dados mockados');
       return { 
         success: false,
         contracts: generateMockBrazilianReal()
@@ -1419,56 +2387,803 @@ async function fetchBrazilianRealFromCME() {
   }
 }
 
+// Função para buscar Principais Índices Mundiais do Investing.com
+async function fetchMoedasFromInvesting() {
+  try {
+    const url = 'https://br.investing.com/indices/major-indices';
+    console.log('🌐 Buscando Principais Índices Mundiais em:', url);
+    
+    const response = await axios.get(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1',
+        'Referer': 'https://br.investing.com/',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'same-origin'
+      },
+      timeout: 20000
+    });
+    
+    const $ = cheerio.load(response.data);
+    const indices = [];
+    
+    // Procurar pela tabela de índices
+    const tableSelectors = [
+      'table.genTbl tbody tr',
+      '#cross_rates_container tbody tr',
+      'table.datatable tbody tr',
+      'table tbody tr[data-test="rates-row"]',
+      '#indices_table tbody tr',
+      'table#cr1 tbody tr',
+      'table tbody tr[data-pair-id]',
+      '.js-table-wrapper table tbody tr'
+    ];
+    
+    for (const tableSelector of tableSelectors) {
+      const rows = $(tableSelector);
+      if (rows.length === 0) continue;
+      
+      console.log(`📋 Tentando seletor Índices: ${tableSelector} (${rows.length} linhas encontradas)`);
+      
+      rows.each((index, element) => {
+        if (index >= 30) return false;
+        
+        const $row = $(element);
+        const cells = $row.find('td');
+        
+        if (cells.length < 5) return;
+        
+        // Log para debug - mostrar primeira linha completa
+        if (index === 0) {
+          console.log(`📊 Primeira linha Índices encontrada com ${cells.length} células:`);
+          cells.each((i, cell) => {
+            console.log(`  Coluna ${i}: "${$(cell).text().trim()}"`);
+          });
+        }
+        
+        // Tentar diferentes estruturas de colunas
+        // Estrutura comum: Name (col 1), Last (col 2), High (col 3), Low (col 4), Change (col 5), Change% (col 6), Time (col 7)
+        let name = cells.eq(1).find('a').text().trim() || cells.eq(1).text().trim();
+        let value = cells.eq(2).text().trim();
+        let high = cells.eq(3).text().trim();
+        let low = cells.eq(4).text().trim();
+        let variation = cells.eq(5).text().trim();
+        let percent = cells.eq(6).text().trim();
+        let time = cells.eq(7) ? cells.eq(7).text().trim() : '';
+        
+        // Se não encontrou dados nas posições esperadas, tentar estrutura alternativa
+        if (!value || !parseFloat(value.replace(/[^\d.,\-]/g, '').replace(',', '.'))) {
+          // Estrutura alternativa: Name (col 1), Last (col 2), Change (col 3), Change% (col 4), Time (col 5)
+          value = cells.eq(2).text().trim();
+          variation = cells.eq(3).text().trim();
+          percent = cells.eq(4).text().trim();
+          time = cells.eq(5) ? cells.eq(5).text().trim() : '';
+          high = value; // Usar Last como High se não tiver
+          low = value; // Usar Last como Low se não tiver
+        }
+        
+        // Pular linhas vazias ou de cabeçalho
+        if (!name || name.length < 2) return;
+        
+        // Verificar se é um índice válido (não é cabeçalho)
+        if (name.toUpperCase().includes('NOME') || name.toUpperCase().includes('NAME') || 
+            name.toUpperCase().includes('ÍNDICE') || name.toUpperCase().includes('INDEX')) {
+          return;
+        }
+        
+        if (name && value && parseFloat(value.replace(/[^\d.,\-]/g, '').replace(',', '.'))) {
+          const cleanValue = value.replace(/[^\d.,\-]/g, '').replace(',', '.');
+          const cleanHigh = high ? high.replace(/[^\d.,\-]/g, '').replace(',', '.') : cleanValue;
+          const cleanLow = low ? low.replace(/[^\d.,\-]/g, '').replace(',', '.') : cleanValue;
+          const cleanVariation = variation.replace(/[^\d.,+\-]/g, '').replace(',', '.');
+          const cleanPercent = percent.replace(/[^\d.,+\-%]/g, '').replace(',', '.');
+          
+          const numValue = parseFloat(cleanValue);
+          const numHigh = parseFloat(cleanHigh) || numValue;
+          const numLow = parseFloat(cleanLow) || numValue;
+          
+          // Garantir que High >= Value >= Low
+          const finalHigh = Math.max(numHigh, numValue);
+          const finalLow = Math.min(numLow, numValue);
+          
+          indices.push({
+            name: name,
+            value: numValue.toFixed(2),
+            variation: cleanVariation,
+            percent: cleanPercent.includes('%') ? cleanPercent : cleanPercent + '%',
+            max: finalHigh.toFixed(2),
+            min: finalLow.toFixed(2),
+            time: time || new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+          });
+        }
+      });
+      
+      if (indices.length > 0) {
+        console.log(`✅ Principais Índices Mundiais encontrados: ${indices.length} itens`);
+        if (indices.length > 0) {
+          console.log(`📊 Primeiro índice exemplo:`, JSON.stringify(indices[0], null, 2));
+        }
+        return indices;
+      }
+    }
+    
+    // Tentar buscar em scripts JSON se não encontrou na tabela
+    console.log('⚠️  Tentando buscar dados em scripts JSON...');
+    try {
+      const scripts = $('script');
+      scripts.each((index, script) => {
+        const scriptContent = $(script).html();
+        if (scriptContent && (scriptContent.includes('window.__INITIAL_STATE__') || 
+            scriptContent.includes('window.__PRELOADED_STATE__') ||
+            scriptContent.includes('window.__NEXT_DATA__'))) {
+          try {
+            // Tentar extrair dados JSON do script
+            const jsonMatch = scriptContent.match(/window\.__[A-Z_]+__\s*=\s*({.+?});/);
+            if (jsonMatch) {
+              const jsonData = JSON.parse(jsonMatch[1]);
+              console.log('📊 Dados JSON encontrados no script');
+              // Processar dados JSON se necessário
+            }
+          } catch (e) {
+            console.log('⚠️  Erro ao parsear JSON do script:', e.message);
+          }
+        }
+      });
+    } catch (e) {
+      console.log('⚠️  Erro ao buscar em scripts:', e.message);
+    }
+    
+    console.log('⚠️  Não foi possível extrair índices, usando dados mockados');
+    return null;
+  } catch (error) {
+    console.error('❌ Erro ao buscar Principais Índices Mundiais:', error.message);
+    return null;
+  }
+}
+
+// Função para buscar Dólar x Mundo do Investing.com
+async function fetchDolarMundoFromInvesting() {
+  try {
+    const url = 'https://br.investing.com/currencies/streaming-forex-rates-majors';
+    console.log('🌐 Buscando Dólar x Mundo em:', url);
+    
+    const response = await axios.get(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1',
+        'Referer': 'https://br.investing.com/',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'same-origin'
+      },
+      timeout: 20000
+    });
+    
+    const $ = cheerio.load(response.data);
+    const moedas = [];
+    
+    const tableSelectors = [
+      'table.genTbl tbody tr',
+      '#pair_ table tbody tr',
+      'table.datatable tbody tr'
+    ];
+    
+    for (const tableSelector of tableSelectors) {
+      const rows = $(tableSelector);
+      if (rows.length === 0) continue;
+      
+      rows.each((index, element) => {
+        if (index >= 25) return false;
+        
+        const $row = $(element);
+        const cells = $row.find('td');
+        
+        if (cells.length < 5) return;
+        
+        const name = cells.eq(1).find('a').text().trim() || cells.eq(1).text().trim();
+        const value = cells.eq(2).text().trim();
+        const variation = cells.eq(3).text().trim();
+        const percent = cells.eq(4).text().trim();
+        
+        if (name && value && name.includes('/')) {
+          const cleanValue = value.replace(/[^\d.,-]/g, '').replace(',', '.');
+          if (parseFloat(cleanValue)) {
+            moedas.push({
+              name: name,
+              value: parseFloat(cleanValue).toFixed(4),
+              variation: variation,
+              percent: percent.includes('%') ? percent : percent + '%',
+              time: ''
+            });
+          }
+        }
+      });
+      
+      if (moedas.length > 0) {
+        console.log(`✅ Dólar x Mundo encontrado: ${moedas.length} itens`);
+        return moedas;
+      }
+    }
+    
+    return null;
+  } catch (error) {
+    console.error('❌ Erro ao buscar Dólar x Mundo:', error.message);
+    return null;
+  }
+}
+
+// Função para buscar Dólar x Emergentes do Investing.com
+async function fetchDolarEmergentesFromInvesting() {
+  try {
+    const url = 'https://br.investing.com/currencies/exotic-currency-pairs';
+    console.log('🌐 Buscando Dólar x Emergentes em:', url);
+    
+    const response = await axios.get(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1',
+        'Referer': 'https://br.investing.com/',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'same-origin'
+      },
+      timeout: 20000
+    });
+    
+    const $ = cheerio.load(response.data);
+    const moedas = [];
+    
+    const tableSelectors = [
+      'table.genTbl tbody tr',
+      '#pair_ table tbody tr',
+      'table.datatable tbody tr'
+    ];
+    
+    for (const tableSelector of tableSelectors) {
+      const rows = $(tableSelector);
+      if (rows.length === 0) continue;
+      
+      rows.each((index, element) => {
+        if (index >= 15) return false;
+        
+        const $row = $(element);
+        const cells = $row.find('td');
+        
+        if (cells.length < 5) return;
+        
+        const name = cells.eq(1).find('a').text().trim() || cells.eq(1).text().trim();
+        const value = cells.eq(2).text().trim();
+        const variation = cells.eq(3).text().trim();
+        const percent = cells.eq(4).text().trim();
+        
+        if (name && value && name.includes('/')) {
+          const cleanValue = value.replace(/[^\d.,-]/g, '').replace(',', '.');
+          if (parseFloat(cleanValue)) {
+            moedas.push({
+              name: name,
+              value: parseFloat(cleanValue).toFixed(4),
+              variation: variation,
+              percent: percent.includes('%') ? percent : percent + '%',
+              time: ''
+            });
+          }
+        }
+      });
+      
+      if (moedas.length > 0) {
+        console.log(`✅ Dólar x Emergentes encontrado: ${moedas.length} itens`);
+        return moedas;
+      }
+    }
+    
+    return null;
+  } catch (error) {
+    console.error('❌ Erro ao buscar Dólar x Emergentes:', error.message);
+    return null;
+  }
+}
+
+// Função para buscar Américas (Futuros CFDs) do Investing.com
+async function fetchAmericasFromInvesting() {
+  try {
+    const url = 'https://br.investing.com/indices/us-indices-futures';
+    console.log('🌐 Buscando Américas (Futuros CFDs) em:', url);
+    
+    const response = await axios.get(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1',
+        'Referer': 'https://br.investing.com/',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'same-origin'
+      },
+      timeout: 20000
+    });
+    
+    const $ = cheerio.load(response.data);
+    const indices = [];
+    
+    const tableSelectors = [
+      'table.genTbl tbody tr',
+      '#cross_rates_container tbody tr',
+      'table.datatable tbody tr'
+    ];
+    
+    for (const tableSelector of tableSelectors) {
+      const rows = $(tableSelector);
+      if (rows.length === 0) continue;
+      
+      rows.each((index, element) => {
+        if (index >= 20) return false;
+        
+        const $row = $(element);
+        const cells = $row.find('td');
+        
+        if (cells.length < 6) return;
+        
+        const name = cells.eq(1).find('a').text().trim() || cells.eq(1).text().trim();
+        const value = cells.eq(2).text().trim();
+        const variation = cells.eq(3).text().trim();
+        const percent = cells.eq(4).text().trim();
+        const time = cells.eq(5) ? cells.eq(5).text().trim() : '';
+        
+        if (name && value) {
+          const cleanValue = value.replace(/[^\d.,-]/g, '').replace(',', '.');
+          if (parseFloat(cleanValue)) {
+            indices.push({
+              name: name,
+              mes: '',
+              value: parseFloat(cleanValue).toFixed(2),
+              max: parseFloat(cleanValue).toFixed(2),
+              min: parseFloat(cleanValue).toFixed(2),
+              variation: variation,
+              percent: percent.includes('%') ? percent : percent + '%',
+              time: time || new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+            });
+          }
+        }
+      });
+      
+      if (indices.length > 0) {
+        console.log(`✅ Américas encontrado: ${indices.length} itens`);
+        return indices;
+      }
+    }
+    
+    return null;
+  } catch (error) {
+    console.error('❌ Erro ao buscar Américas:', error.message);
+    return null;
+  }
+}
+
+// Função para buscar Europa (Futuros CFDs) do Investing.com
+async function fetchEuropaFromInvesting() {
+  try {
+    const url = 'https://www.investing.com/indices/european-indices';
+    console.log('🌐 Buscando Europa (Futuros CFDs) em:', url);
+    
+    const response = await axios.get(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9,pt-BR;q=0.8,pt;q=0.7',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1',
+        'Referer': 'https://br.investing.com/',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'same-origin'
+      },
+      timeout: 20000
+    });
+    
+    const $ = cheerio.load(response.data);
+    const indices = [];
+    
+    const tableSelectors = [
+      'table.genTbl tbody tr',
+      '#cross_rates_container tbody tr',
+      'table.datatable tbody tr'
+    ];
+    
+    for (const tableSelector of tableSelectors) {
+      const rows = $(tableSelector);
+      if (rows.length === 0) continue;
+      
+      rows.each((index, element) => {
+        if (index >= 15) return false;
+        
+        const $row = $(element);
+        const cells = $row.find('td');
+        
+        if (cells.length < 6) return;
+        
+        const name = cells.eq(1).find('a').text().trim() || cells.eq(1).text().trim();
+        const value = cells.eq(2).text().trim();
+        const variation = cells.eq(3).text().trim();
+        const percent = cells.eq(4).text().trim();
+        const time = cells.eq(5) ? cells.eq(5).text().trim() : '';
+        
+        if (name && value) {
+          const cleanValue = value.replace(/[^\d.,-]/g, '').replace(',', '.');
+          if (parseFloat(cleanValue)) {
+            indices.push({
+              name: name,
+              value: parseFloat(cleanValue).toFixed(2),
+              variation: variation,
+              percent: percent.includes('%') ? percent : percent + '%',
+              time: time || new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+            });
+          }
+        }
+      });
+      
+      if (indices.length > 0) {
+        console.log(`✅ Europa encontrado: ${indices.length} itens`);
+        return indices;
+      }
+    }
+    
+    return null;
+  } catch (error) {
+    console.error('❌ Erro ao buscar Europa:', error.message);
+    return null;
+  }
+}
+
+// Função para buscar Ásia e Oceania (Futuros CFDs) do Investing.com
+async function fetchAsiaOceaniaFromInvesting() {
+  try {
+    const url = 'https://br.investing.com/indices/asia-pacific';
+    console.log('🌐 Buscando Ásia e Oceania (Futuros CFDs) em:', url);
+    
+    const response = await axios.get(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1',
+        'Referer': 'https://br.investing.com/',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'same-origin'
+      },
+      timeout: 20000
+    });
+    
+    const $ = cheerio.load(response.data);
+    const indices = [];
+    
+    const tableSelectors = [
+      'table.genTbl tbody tr',
+      '#cross_rates_container tbody tr',
+      'table.datatable tbody tr'
+    ];
+    
+    for (const tableSelector of tableSelectors) {
+      const rows = $(tableSelector);
+      if (rows.length === 0) continue;
+      
+      rows.each((index, element) => {
+        if (index >= 15) return false;
+        
+        const $row = $(element);
+        const cells = $row.find('td');
+        
+        if (cells.length < 6) return;
+        
+        const name = cells.eq(1).find('a').text().trim() || cells.eq(1).text().trim();
+        const value = cells.eq(2).text().trim();
+        const variation = cells.eq(3).text().trim();
+        const percent = cells.eq(4).text().trim();
+        const time = cells.eq(5) ? cells.eq(5).text().trim() : '';
+        
+        if (name && value) {
+          const cleanValue = value.replace(/[^\d.,-]/g, '').replace(',', '.');
+          if (parseFloat(cleanValue)) {
+            indices.push({
+              name: name,
+              value: parseFloat(cleanValue).toFixed(2),
+              variation: variation,
+              percent: percent.includes('%') ? percent : percent + '%',
+              time: time || new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+            });
+          }
+        }
+      });
+      
+      if (indices.length > 0) {
+        console.log(`✅ Ásia e Oceania encontrado: ${indices.length} itens`);
+        return indices;
+      }
+    }
+    
+    return null;
+  } catch (error) {
+    console.error('❌ Erro ao buscar Ásia e Oceania:', error.message);
+    return null;
+  }
+}
+
+// Função para buscar Dólar Cupom da B3
+async function fetchDolarCupomFromB3() {
+  try {
+    const url = 'https://www.b3.com.br/pt_br/market-data-e-indices/servicos-de-dados/market-data/consultas/mercado-de-derivativos/indicadores/indicadores-financeiros/';
+    console.log('🌐 Buscando Dólar Cupom da B3 em:', url);
+    
+    const response = await axios.get(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1',
+        'Referer': 'https://www.b3.com.br/',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'same-origin'
+      },
+      timeout: 20000
+    });
+    
+    const $ = cheerio.load(response.data);
+    const valores = {};
+    
+    // Primeiro, tentar buscar em scripts JSON (dados podem estar carregados via JS)
+    const scripts = $('script').toArray();
+    console.log(`📜 Encontrados ${scripts.length} scripts na página`);
+    
+    for (const script of scripts) {
+      const scriptContent = $(script).html() || '';
+      
+      // Procurar por padrões JSON que possam conter os dados
+      if (scriptContent.includes('cupom') || scriptContent.includes('DIF OPER') || scriptContent.includes('SPOT')) {
+        console.log('💡 Script potencial encontrado, tentando extrair dados...');
+        
+        // Tentar extrair valores usando regex mais flexível
+        const indicadores = [
+          { nome: 'DIF OPER CASADA - COMPRA', chave: 'difOperCasada', patterns: [/DIF\s*OPER\s*CASADA[\s\S]{0,200}(\d+[.,]\d+)/i, /difOperCasada[\s\S]{0,100}["\']?(\d+[.,]\d+)/i] },
+          { nome: 'DÓLAR CUPOM LIMPO', chave: 'cupomLimpo', patterns: [/DÓLAR\s*CUPOM\s*LIMPO[\s\S]{0,200}(\d+[.,]\d+)/i, /cupomLimpo[\s\S]{0,100}["\']?(\d+[.,]\d+)/i] },
+          { nome: 'DÓLAR BMF SPOT - 2 DIAS', chave: 'spot2Dias', patterns: [/DÓLAR\s*BMF\s*SPOT[\s\S]{0,200}(\d+[.,]\d+)/i, /spot2Dias[\s\S]{0,100}["\']?(\d+[.,]\d+)/i] },
+          { nome: 'DOLAR SPOT BMF PARA 1 DIA', chave: 'spot1Dia', patterns: [/SPOT\s*BMF\s*PARA\s*1\s*DIA[\s\S]{0,200}(\d+[.,]\d+)/i, /spot1Dia[\s\S]{0,100}["\']?(\d+[.,]\d+)/i] }
+        ];
+        
+        indicadores.forEach(indicador => {
+          if (!valores[indicador.chave]) {
+            for (const pattern of indicador.patterns) {
+              const match = scriptContent.match(pattern);
+              if (match && match[1]) {
+                valores[indicador.chave] = match[1].replace(',', '.');
+                console.log(`✅ ${indicador.nome} encontrado em script: ${valores[indicador.chave]}`);
+                break;
+              }
+            }
+          }
+        });
+      }
+    }
+    
+    // Se não encontrou em scripts, tentar buscar no HTML
+    if (Object.keys(valores).length === 0) {
+      console.log('💡 Tentando buscar no HTML...');
+      const pageText = $('body').text();
+      
+      // Buscar usando padrões mais flexíveis
+      const indicadores = [
+        { nome: 'DIF OPER CASADA - COMPRA', chave: 'difOperCasada', patterns: [/DIF\s*OPER\s*CASADA[\s\S]{0,200}(\d+[.,]\d+)/i] },
+        { nome: 'DÓLAR CUPOM LIMPO', chave: 'cupomLimpo', patterns: [/DÓLAR\s*CUPOM\s*LIMPO[\s\S]{0,200}(\d+[.,]\d+)/i] },
+        { nome: 'DÓLAR BMF SPOT - 2 DIAS', chave: 'spot2Dias', patterns: [/DÓLAR\s*BMF\s*SPOT[\s\S]{0,200}(\d+[.,]\d+)/i] },
+        { nome: 'DOLAR SPOT BMF PARA 1 DIA', chave: 'spot1Dia', patterns: [/SPOT\s*BMF\s*PARA\s*1\s*DIA[\s\S]{0,200}(\d+[.,]\d+)/i] }
+      ];
+      
+      indicadores.forEach(indicador => {
+        if (!valores[indicador.chave]) {
+          for (const pattern of indicador.patterns) {
+            const match = pageText.match(pattern);
+            if (match && match[1]) {
+              valores[indicador.chave] = match[1].replace(',', '.');
+              console.log(`✅ ${indicador.nome} encontrado no HTML: ${valores[indicador.chave]}`);
+              break;
+            }
+          }
+        }
+      });
+      
+      // Tentar buscar em tabelas específicas
+      $('table tbody tr').each((index, element) => {
+        const rowText = $(element).text();
+        const cells = $(element).find('td');
+        
+        cells.each((cellIndex, cell) => {
+          const cellText = $(cell).text().trim();
+          
+          indicadores.forEach(indicador => {
+            if (cellText.includes(indicador.nome.split(' - ')[0]) && !valores[indicador.chave]) {
+              // Procurar valor na mesma linha
+              const valueMatch = rowText.match(/(\d+[.,]\d+)/);
+              if (valueMatch) {
+                valores[indicador.chave] = valueMatch[1].replace(',', '.');
+                console.log(`✅ ${indicador.nome} encontrado em tabela: ${valores[indicador.chave]}`);
+              }
+            }
+          });
+        });
+      });
+    }
+    
+    if (Object.keys(valores).length > 0) {
+      console.log(`✅ Dólar Cupom encontrado (${Object.keys(valores).length}/4 valores):`, valores);
+      return {
+        success: true,
+        valores: valores,
+        cupomLimpo: valores.cupomLimpo || '0.0000',
+        timestamp: new Date().toISOString()
+      };
+    }
+    
+    console.log('⚠️  Dólar Cupom não encontrado na página (usando dados mockados)');
+    return null;
+  } catch (error) {
+    console.error('❌ Erro ao buscar Dólar Cupom da B3:', error.message);
+    return null;
+  }
+}
+
+// Função para buscar Criptomoedas do Investing.com
+async function fetchCriptomoedasFromInvesting() {
+  try {
+    // Tentar URL alternativa se a principal falhar
+    const url = 'https://br.investing.com/crypto/';
+    console.log('🌐 Buscando Criptomoedas em:', url);
+    
+    const response = await axios.get(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1',
+        'Referer': 'https://br.investing.com/',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'same-origin'
+      },
+      timeout: 20000
+    });
+    
+    const $ = cheerio.load(response.data);
+    const cryptos = [];
+    
+    const tableSelectors = [
+      'table.genTbl tbody tr',
+      '#crypto_table tbody tr',
+      'table.datatable tbody tr'
+    ];
+    
+    for (const tableSelector of tableSelectors) {
+      const rows = $(tableSelector);
+      if (rows.length === 0) continue;
+      
+      rows.each((index, element) => {
+        if (index >= 15) return false;
+        
+        const $row = $(element);
+        const cells = $row.find('td');
+        
+        if (cells.length < 5) return;
+        
+        const name = cells.eq(1).find('a').text().trim() || cells.eq(1).text().trim();
+        const value = cells.eq(2).text().trim();
+        const variation = cells.eq(3).text().trim();
+        const percent = cells.eq(4).text().trim();
+        
+        if (name && value) {
+          const cleanValue = value.replace(/[^\d.,-]/g, '').replace(',', '.');
+          if (parseFloat(cleanValue)) {
+            cryptos.push({
+              name: name,
+              value: parseFloat(cleanValue).toFixed(2),
+              variation: variation,
+              percent: percent.includes('%') ? percent : percent + '%',
+              time: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+            });
+          }
+        }
+      });
+      
+      if (cryptos.length > 0) {
+        console.log(`✅ Criptomoedas encontrado: ${cryptos.length} itens`);
+        return cryptos;
+      }
+    }
+    
+    return null;
+  } catch (error) {
+    console.error('❌ Erro ao buscar Criptomoedas:', error.message);
+    return null;
+  }
+}
+
 // Função para gerar dados mockados do Brazilian Real (fallback)
 function generateMockBrazilianReal() {
   const now = new Date();
   const timeStr = now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   
-  // Valores com 4-5 casas decimais como na CME Group
+  // Valores com 4-5 casas decimais como na CME Group - formato igual à página real
   return [
     {
-      name: 'BRL/USD',
-      mes: 'FEB 26',
-      value: '0.1830',
-      max: '0.18335',
-      min: '0.1808',
-      variation: '0.0022',
-      percent: '+1.22%',
-      volume: '14,703',
-      openInterest: '5,678',
+      name: '6LG6', // Código GLOBEX
+      mes: 'FEB 2026', // Mês completo
+      value: '0.1856',
+      max: '0.1861',
+      min: '0.1848',
+      variation: '-0.00035',
+      percent: '-0.19%',
+      volume: '12,080',
+      openInterest: '0',
+      open: '0.18595',
+      priorSettle: '-',
       time: timeStr
     },
     {
-      name: 'BRL/USD',
-      mes: 'MAR 26',
-      value: '0.18215',
-      max: '0.1822',
-      min: '0.1810',
-      variation: '0.0024',
-      percent: '+1.34%',
-      volume: '46',
-      openInterest: '6,789',
+      name: '6LH6', // Código GLOBEX MAR 2026
+      mes: 'MAR 2026',
+      value: '0.1845',
+      max: '0.18475',
+      min: '0.1837',
+      variation: '-0.00035',
+      percent: '-0.19%',
+      volume: '0',
+      openInterest: '0',
+      open: '0.18455',
+      priorSettle: '-',
       time: timeStr
     },
     {
-      name: 'BRL/USD',
-      mes: 'JUN 26',
-      value: '0.1815',
-      max: '0.1820',
-      min: '0.1805',
-      variation: '0.0015',
-      percent: '+0.83%',
-      volume: '1,567',
-      openInterest: '4,321',
+      name: '6LJ6', // Código GLOBEX JUN 2026
+      mes: 'JUN 2026',
+      value: '0.1835',
+      max: '0.1840',
+      min: '0.1825',
+      variation: '-0.00025',
+      percent: '-0.14%',
+      volume: '0',
+      openInterest: '0',
+      open: '0.18375',
+      priorSettle: '-',
       time: timeStr
     }
   ];
 }
 
-// Cache para Brazilian Real (atualizar a cada 2 minutos)
+// Cache para Brazilian Real (atualizar a cada 5 segundos para tempo real)
 let brazilianRealCache = null;
 let brazilianRealCacheTime = null;
-const BRAZILIAN_REAL_CACHE_TTL = 120000; // 2 minutos
+const BRAZILIAN_REAL_CACHE_TTL = 5000; // 5 segundos (reduzido para atualizações em tempo real)
 
 async function getBrazilianReal() {
   const now = Date.now();
@@ -1476,15 +3191,24 @@ async function getBrazilianReal() {
   // Se o cache é válido, retornar
   if (brazilianRealCache && brazilianRealCacheTime && 
       (now - brazilianRealCacheTime) < BRAZILIAN_REAL_CACHE_TTL) {
+    console.log('💾 Retornando dados do Brazilian Real do cache');
     return brazilianRealCache;
   }
   
+  console.log('🔄 Cache expirado ou inexistente, buscando novos dados do Brazilian Real...');
   // Buscar novos dados
   const realData = await fetchBrazilianRealFromCME();
   
   if (realData.success || realData.contracts) {
+    console.log(`✅ Dados do Brazilian Real atualizados no cache: ${realData.contracts?.length || 0} contratos`);
     brazilianRealCache = realData;
     brazilianRealCacheTime = now;
+  } else {
+    console.log('⚠️  Falha ao buscar dados do Brazilian Real, usando cache anterior se disponível');
+    // Se falhou mas tem cache antigo, usar ele
+    if (brazilianRealCache) {
+      return brazilianRealCache;
+    }
   }
   
   return realData;
@@ -1626,16 +3350,16 @@ function generateFinancialData() {
       { name: 'Austrália', value: '7850.00', variation: '+12.50', percent: '+0.16%', time: '01/01' }
     ],
     moedas: [
-      // Dólar será atualizado com dados reais da URL
-      { name: 'Dólar', value: '5.1300', variation: '0.00', percent: '0.00%', max: '5.1300', min: '5.1300', time: '' },
-      { name: 'Euro', value: '5.5488', variation: '0.00', percent: '0.00%', max: '5.5488', min: '5.5488', time: '' },
-      { name: 'Índice Dólar DXY', value: '101.25', variation: '-0.15', percent: '-0.15%', max: '101.25', min: '101.25', time: '' },
-      { name: 'USD/EUR', value: '0.9150', variation: '-0.0010', percent: '-0.11%', max: '0.9150', min: '0.9150', time: '' },
-      { name: 'USD/JPY', value: '148.50', variation: '+0.25', percent: '+0.17%', max: '148.50', min: '148.50', time: '' },
-      { name: 'USD/GBP', value: '0.7850', variation: '+0.0010', percent: '+0.13%', max: '0.7850', min: '0.7850', time: '' },
-      { name: 'USD/CAD', value: '1.3450', variation: '+0.0025', percent: '+0.19%', max: '1.3450', min: '1.3450', time: '' },
-      { name: 'USD/SEK', value: '10.3750', variation: '+0.0125', percent: '+0.12%', max: '10.3750', min: '10.3750', time: '' },
-      { name: 'USD/CHF', value: '0.8750', variation: '-0.0010', percent: '-0.11%', max: '0.8750', min: '0.8750', time: '' }
+      // Principais Índices Mundiais - dados mockados (serão substituídos por dados reais)
+      { name: 'S&P 500', value: '4850.00', variation: '+15.50', percent: '+0.32%', max: '4855.00', min: '4835.00', time: timeStr },
+      { name: 'Dow Jones', value: '37650.00', variation: '+125.00', percent: '+0.33%', max: '37680.00', min: '37520.00', time: timeStr },
+      { name: 'NASDAQ', value: '15250.00', variation: '+45.00', percent: '+0.30%', max: '15280.00', min: '15200.00', time: timeStr },
+      { name: 'FTSE 100', value: '7680.00', variation: '+25.50', percent: '+0.33%', max: '7690.00', min: '7655.00', time: timeStr },
+      { name: 'DAX', value: '16850.00', variation: '+45.00', percent: '+0.27%', max: '16880.00', min: '16820.00', time: timeStr },
+      { name: 'CAC 40', value: '7450.25', variation: '+18.75', percent: '+0.25%', max: '7460.00', min: '7435.00', time: timeStr },
+      { name: 'Nikkei 225', value: '33250.00', variation: '-125.00', percent: '-0.37%', max: '33300.00', min: '33200.00', time: timeStr },
+      { name: 'Hang Seng', value: '16850.00', variation: '+45.00', percent: '+0.27%', max: '16880.00', min: '16820.00', time: timeStr },
+      { name: 'Shanghai Composite', value: '3120.00', variation: '+8.50', percent: '+0.27%', max: '3125.00', min: '3115.00', time: timeStr }
     ],
     dolarAmericas: generateMockBrazilianReal(),
     indicesB3: [
@@ -1690,8 +3414,21 @@ function generateFinancialData() {
 // API: Dashboard financeiro completo
 app.get('/api/finance/dashboard', requireAuth, async (req, res) => {
   try {
+    const requestTime = new Date().toISOString();
+    console.log(`📊 Requisição de dashboard recebida em: ${requestTime}`);
+    
+    // Headers para evitar cache do navegador
+    res.set({
+      'Cache-Control': 'no-cache, no-store, must-revalidate',
+      'Pragma': 'no-cache',
+      'Expires': '0',
+      'Last-Modified': new Date().toUTCString(),
+      'ETag': `"${Date.now()}"`
+    });
+    
     // Gerar dados base
     const data = generateFinancialData();
+    console.log(`📊 Dados base gerados. Moedas iniciais: ${data.moedas.length} itens`);
     
     // Buscar dados reais do dólar
     const dollarData = await getDollarData();
@@ -1742,48 +3479,6 @@ app.get('/api/finance/dashboard', requireAuth, async (req, res) => {
       
       updateDollarInSection(data.dolarMundo, 'USD/BRL');
       
-      // Atualizar Dólar no box MOEDAS / CESTA DX
-      const dolarIndex = data.moedas.findIndex(item => item.name === 'Dólar');
-      if (dolarIndex !== -1) {
-        // Garantir que o valor tenha no máximo 4 casas decimais
-        const dollarValue = parseFloat(dollarData.value).toFixed(4);
-        const dollarMax = dollarData.max ? parseFloat(dollarData.max).toFixed(4) : dollarValue;
-        const dollarMin = dollarData.min ? parseFloat(dollarData.min).toFixed(4) : dollarValue;
-        
-        data.moedas[dolarIndex] = {
-          name: 'Dólar',
-          value: dollarValue,
-          variation: dollarData.variation || '0.00',
-          percent: dollarData.percent || '0.00%',
-          max: dollarMax,
-          min: dollarMin,
-          time: dollarData.time || new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-        };
-        console.log('✅ Dólar atualizado no box MOEDAS / CESTA DX:', data.moedas[dolarIndex]);
-      } else {
-        console.log('⚠️  Dólar não encontrado no array moedas para atualização');
-      }
-      
-      // Sincronizar moedas comuns entre dolarMundo e moedas
-      const syncCurrency = (currencyName) => {
-        const mundoIndex = data.dolarMundo.findIndex(item => item.name === currencyName);
-        const moedasIndex = data.moedas.findIndex(item => item.name === currencyName);
-        
-        if (mundoIndex !== -1 && moedasIndex !== -1) {
-          // Copiar dados de dolarMundo para moedas
-          data.moedas[moedasIndex] = {
-            ...data.dolarMundo[mundoIndex]
-          };
-        }
-      };
-      
-      // Sincronizar moedas comuns
-      syncCurrency('USD/EUR');
-      syncCurrency('USD/JPY');
-      syncCurrency('USD/GBP');
-      syncCurrency('USD/CAD');
-      syncCurrency('USD/SEK');
-      syncCurrency('USD/CHF');
     }
     
     // Buscar calendário econômico
@@ -1796,6 +3491,110 @@ app.get('/api/finance/dashboard', requireAuth, async (req, res) => {
     const brazilianRealData = await getBrazilianReal();
     if (brazilianRealData.contracts && brazilianRealData.contracts.length > 0) {
       data.dolarAmericas = brazilianRealData.contracts;
+      console.log(`✅ Brazilian Real atualizado no box BRAZILIAN REAL (CME): ${brazilianRealData.contracts.length} contratos`);
+      if (brazilianRealData.contracts.length > 0) {
+        console.log(`📊 Primeiro contrato exemplo:`, JSON.stringify(brazilianRealData.contracts[0], null, 2));
+      }
+    } else {
+      console.log('⚠️  Brazilian Real não encontrado, usando dados mockados');
+    }
+    
+    // Buscar dados reais dos Treasuries
+    const treasuriesData = await fetchTreasuriesFromInvesting();
+    if (treasuriesData && treasuriesData.length > 0) {
+      data.treasuries = treasuriesData;
+    }
+    
+    // Buscar dados reais de Principais Índices Mundiais
+    const moedasData = await fetchMoedasFromInvesting();
+    if (moedasData && moedasData.length > 0) {
+      data.moedas = moedasData;
+      console.log(`✅ Principais Índices Mundiais atualizados: ${moedasData.length} itens`);
+    }
+    
+    // Buscar dados reais de Dólar x Mundo
+    const dolarMundoData = await fetchDolarMundoFromInvesting();
+    if (dolarMundoData && dolarMundoData.length > 0) {
+      data.dolarMundo = dolarMundoData;
+      console.log(`✅ Dólar x Mundo atualizado: ${dolarMundoData.length} itens`);
+    }
+    
+    // Buscar dados reais de Dólar x Emergentes
+    const dolarEmergentesData = await fetchDolarEmergentesFromInvesting();
+    if (dolarEmergentesData && dolarEmergentesData.length > 0) {
+      // Manter USD/BRL que já foi atualizado
+      const usdBrlIndex = dolarEmergentesData.findIndex(item => item.name === 'USD/BRL');
+      if (usdBrlIndex === -1 && dollarData.success) {
+        dolarEmergentesData.push({
+          name: 'USD/BRL',
+          value: dollarData.value,
+          variation: dollarData.variation,
+          percent: dollarData.percent,
+          max: dollarData.max,
+          min: dollarData.min,
+          time: dollarData.time
+        });
+      }
+      data.dolarEmergentes = dolarEmergentesData;
+      console.log(`✅ Dólar x Emergentes atualizado: ${dolarEmergentesData.length} itens`);
+    }
+    
+    // Buscar dados reais de Américas (Futuros CFDs)
+    const americasData = await fetchAmericasFromInvesting();
+    if (americasData && americasData.length > 0) {
+      data.americas = americasData;
+      console.log(`✅ Américas atualizado: ${americasData.length} itens`);
+    }
+    
+    // Buscar dados reais de Europa (Futuros CFDs)
+    const europaData = await fetchEuropaFromInvesting();
+    if (europaData && europaData.length > 0) {
+      data.europa = europaData;
+      console.log(`✅ Europa atualizado: ${europaData.length} itens`);
+    }
+    
+    // Buscar dados reais de Ásia e Oceania (Futuros CFDs)
+    const asiaOceaniaData = await fetchAsiaOceaniaFromInvesting();
+    if (asiaOceaniaData && asiaOceaniaData.length > 0) {
+      data.asiaOceania = asiaOceaniaData;
+      console.log(`✅ Ásia e Oceania atualizado: ${asiaOceaniaData.length} itens`);
+    }
+    
+    // Buscar dados reais de Criptomoedas
+    const criptomoedasData = await fetchCriptomoedasFromInvesting();
+    if (criptomoedasData && criptomoedasData.length > 0) {
+      data.criptomoedas = criptomoedasData;
+      console.log(`✅ Criptomoedas atualizado: ${criptomoedasData.length} itens`);
+    }
+    
+    // Buscar Dólar Cupom da B3
+    const dolarCupomData = await fetchDolarCupomFromB3();
+    if (dolarCupomData && dolarCupomData.success) {
+      data.dolarCupom = dolarCupomData;
+      console.log(`✅ Dólar Cupom atualizado:`, dolarCupomData.valores || dolarCupomData);
+    } else {
+      // Dados mockados se não conseguir buscar
+      data.dolarCupom = {
+        success: false,
+        valores: {
+          difOperCasada: '17.57',
+          cupomLimpo: '5.3688',
+          spot2Dias: '5.3697',
+          spot1Dia: '5.3684'
+        },
+        cupomLimpo: '5.3688',
+        timestamp: new Date().toISOString()
+      };
+    }
+    
+    // Adicionar timestamp para garantir atualização
+    data.timestamp = Date.now();
+    data.lastUpdate = new Date().toISOString();
+    
+    console.log(`✅ Dashboard gerado com sucesso. Timestamp: ${data.lastUpdate}`);
+    console.log(`📊 Principais Índices Mundiais finais: ${data.moedas.length} itens`);
+    if (data.moedas.length > 0) {
+      console.log(`   Primeiro índice: ${data.moedas[0].name} = ${data.moedas[0].value} (time: ${data.moedas[0].time})`);
     }
     
     res.json(data);

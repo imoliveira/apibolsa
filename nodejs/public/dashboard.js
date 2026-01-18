@@ -98,56 +98,155 @@ function createValueWithInverseCell(val) {
     `;
 }
 
-// Função para criar linha da tabela do Brazilian Real (com valor inverso)
-function createBrazilianRealRow(data) {
+// Função para criar linha da tabela do Brazilian Real (estilo CME Group)
+function createBrazilianRealRow(data, index) {
     const variationClass = getVariationClass(data.variation);
-    const percentClass = getVariationClass(data.percent);
-    const timeClass = variationClass;
     
-    // Formatar variação com sinal
-    const variation = data.variation || '0.00';
-    const variationFormatted = parseFloat(variation) >= 0 ? 
-        `+${formatNumber(variation, 4)}` : formatNumber(variation, 4);
-    
-    // Valores para Último, Máxima e Mínima
+    // Formatar valores com 4 casas decimais
     const value = data.value || '0.0000';
     const max = data.max || value;
     const min = data.min || value;
+    const open = data.open || value;
+    
+    // Extrair código GLOBEX e mês do nome
+    let globexCode = '';
+    let monthDisplay = data.mes || '';
+    
+    // Se o nome é um código GLOBEX (ex: "6LG6"), usar diretamente
+    if (data.name && data.name.match(/^\d{1}[A-Z]{2}\d{1}$/)) {
+        globexCode = data.name;
+    } else if (data.name) {
+        // Tentar extrair código GLOBEX do nome (ex: "6LG6" de "FEB 2026 6LG6")
+        const globexMatch = data.name.match(/(\d{1}[A-Z]{2}\d{1})/);
+        if (globexMatch) {
+            globexCode = globexMatch[1];
+        }
+        // Se não tem mês mas tem no nome, extrair
+        if (!monthDisplay && data.name.match(/[A-Z]{3}\s+\d{4}/)) {
+            monthDisplay = data.name.match(/([A-Z]{3}\s+\d{4})/)[1];
+        }
+    }
+    
+    // Se ainda não tem mês, usar padrão baseado no código GLOBEX
+    if (!monthDisplay && globexCode) {
+        // Mapear código GLOBEX para mês (aproximação)
+        const monthMap = {
+            '6LG': 'FEB', '6LH': 'MAR', '6LJ': 'JUN', '6LK': 'SEP', '6LN': 'DEC'
+        };
+        const prefix = globexCode.substring(0, 3);
+        const year = globexCode.substring(3) === '6' ? '2026' : '2025';
+        monthDisplay = (monthMap[prefix] || 'FEB') + ' ' + year;
+    }
+    
+    // CHANGE pode vir como "-0.00035 (-0.19%)" ou separado
+    let changeDisplay = data.variation || '0.0000';
+    // Se não contém parênteses, adicionar o percentual
+    if (changeDisplay && !changeDisplay.includes('(') && data.percent) {
+      changeDisplay = `${changeDisplay} (${data.percent})`;
+    }
+    
+    // Função auxiliar para calcular valor em reais (1/valor)
+    const calculateRealValue = (val) => {
+        const num = parseFloat(val);
+        if (isNaN(num) || num <= 0) return null;
+        return (1 / num).toFixed(5);
+    };
+    
+    // Calcular valores em reais para cada campo
+    const realValue = calculateRealValue(value);
+    const realOpen = calculateRealValue(open);
+    const realHigh = calculateRealValue(max);
+    const realLow = calculateRealValue(min);
+    
+    // Função auxiliar para criar célula com valor e conversão em reais
+    const createValueCell = (val, realVal) => {
+        if (realVal) {
+            return `<div class="table-cell cell-value cell-value-with-real">
+                <div class="value-main">${val}</div>
+                <div class="value-real">R$ ${realVal}</div>
+            </div>`;
+        }
+        return `<div class="table-cell cell-value">${val}</div>`;
+    };
     
     return `
-        <div class="table-row brazilian-real-row">
-            <div class="table-cell cell-name">${data.name}</div>
-            <div class="table-cell cell-mes">${data.mes || ''}</div>
-            ${createValueWithInverseCell(value)}
-            ${createValueWithInverseCell(max)}
-            ${createValueWithInverseCell(min)}
-            <div class="table-cell cell-variation ${variationClass}">${variationFormatted}</div>
-            <div class="table-cell cell-percent ${percentClass}">${formatPercent(data.percent)}</div>
-            <div class="table-cell cell-time ${timeClass}">${data.time || ''}</div>
+        <div class="table-row brazilian-real-row ${index % 2 === 0 ? 'row-even' : 'row-odd'}">
+            <div class="table-cell cell-month">
+                <span class="month-icon">💼</span>
+                <div class="month-info">
+                    <div class="month-text">${monthDisplay}</div>
+                    <div class="globex-code">${globexCode || data.name || ''}</div>
+                </div>
+            </div>
+            <div class="table-cell cell-options">
+                <button class="opt-button">OPT</button>
+            </div>
+            <div class="table-cell cell-chart">
+                <span class="chart-icon">📊</span>
+            </div>
+            ${createValueCell(value, realValue)}
+            <div class="table-cell cell-variation ${variationClass}">${changeDisplay}</div>
+            <div class="table-cell cell-value">${data.priorSettle || '-'}</div>
+            ${createValueCell(open, realOpen)}
+            ${createValueCell(min, realLow)}
+            ${createValueCell(max, realHigh)}
         </div>
     `;
 }
 
 // Função para criar linha da tabela
-function createTableRow(data, isCurrency = false) {
+function createTableRow(data, isCurrency = false, isTreasuries = false) {
     const variationClass = getVariationClass(data.variation);
     const percentClass = getVariationClass(data.percent);
     const timeClass = variationClass; // Usar mesma classe para cor do ícone
     
     // Formatar variação com sinal
     const variation = data.variation || '0.00';
-    // Para moedas/futuros, usar mais casas decimais na variação
-    const variationDecimals = isCurrency ? 4 : 2;
+    // Para Treasuries usar 3 casas decimais, para moedas/futuros usar 4, senão 2
+    let variationDecimals = 2;
+    if (isTreasuries) {
+        variationDecimals = 3;
+    } else if (isCurrency) {
+        variationDecimals = 4;
+    }
+    
     const variationFormatted = parseFloat(variation) >= 0 ? 
         `+${formatNumber(variation, variationDecimals)}` : formatNumber(variation, variationDecimals);
     
+    // Para Treasuries, usar 3 casas decimais nos valores
+    const valueDecimals = isTreasuries ? 3 : (isCurrency ? 4 : 2);
+    const formatTreasuryValue = (val) => {
+        if (isTreasuries) {
+            const num = parseFloat(val) || 0;
+            return num.toFixed(3);
+        }
+        return formatValue(val, isCurrency);
+    };
+    
+    // Para Treasuries, usar ordem específica: Name, Yield, Prev., High, Low, Chg., Chg.%, Time
+    if (isTreasuries) {
+        return `
+            <div class="table-row">
+                <div class="table-cell cell-name">${data.name}</div>
+                <div class="table-cell cell-value">${formatTreasuryValue(data.value)}</div>
+                <div class="table-cell cell-value">${formatTreasuryValue(data.previous || data.value)}</div>
+                <div class="table-cell cell-value">${formatTreasuryValue(data.max || data.value)}</div>
+                <div class="table-cell cell-value">${formatTreasuryValue(data.min || data.value)}</div>
+                <div class="table-cell cell-variation ${variationClass}">${variationFormatted}</div>
+                <div class="table-cell cell-percent ${percentClass}">${formatPercent(data.percent)}</div>
+                <div class="table-cell cell-time ${timeClass}">${data.time || ''}</div>
+            </div>
+        `;
+    }
+    
+    // Para outras tabelas, usar ordem padrão
     return `
         <div class="table-row">
             <div class="table-cell cell-name">${data.name}</div>
             <div class="table-cell cell-mes">${data.mes || ''}</div>
-            <div class="table-cell cell-value">${formatValue(data.value, isCurrency)}</div>
-            <div class="table-cell cell-value">${formatValue(data.max || data.value, isCurrency)}</div>
-            <div class="table-cell cell-value">${formatValue(data.min || data.value, isCurrency)}</div>
+            <div class="table-cell cell-value">${formatTreasuryValue(data.value)}</div>
+            <div class="table-cell cell-value">${formatTreasuryValue(data.max || data.value)}</div>
+            <div class="table-cell cell-value">${formatTreasuryValue(data.min || data.value)}</div>
             <div class="table-cell cell-variation ${variationClass}">${variationFormatted}</div>
             <div class="table-cell cell-percent ${percentClass}">${formatPercent(data.percent)}</div>
             <div class="table-cell cell-time ${timeClass}">${data.time || ''}</div>
@@ -158,7 +257,10 @@ function createTableRow(data, isCurrency = false) {
 // Função para renderizar tabela
 function renderTable(containerId, data, isCurrency = false) {
     const container = document.getElementById(containerId);
-    if (!container) return;
+    if (!container) {
+        console.error(`❌ Container não encontrado: ${containerId}`);
+        return;
+    }
     
     if (!data || data.length === 0) {
         container.innerHTML = '<div class="table-loading">Sem dados disponíveis</div>';
@@ -167,28 +269,140 @@ function renderTable(containerId, data, isCurrency = false) {
     
     // Detectar se é Brazilian Real ou outras moedas baseado no containerId
     const isBrazilianReal = containerId === 'dolar-americas-table';
+    const isTreasuries = containerId === 'treasuries-table';
+    
+    // Log para debug do Treasuries
+    if (isTreasuries) {
+        console.log(`📊 Renderizando tabela Treasuries com ${data.length} itens`);
+        if (data[0]) {
+            console.log(`📊 Primeiro item:`, JSON.stringify(data[0], null, 2));
+        }
+    }
+    
     if (containerId === 'dolar-americas-table' || containerId.includes('real') || containerId.includes('moedas')) {
         isCurrency = true;
     }
     
-    // Criar header da tabela
-    const header = `
-        <div class="table-header-row">
-            <div>Nome</div>
-            <div>Mês</div>
-            <div>Último</div>
-            <div>Máxima</div>
-            <div>Mínima</div>
-            <div>Variação</div>
-            <div>Var. %</div>
-            <div>Hora</div>
-        </div>
-    `;
+    // Criar header da tabela - estrutura diferente para Brazilian Real
+    let header = '';
+    let rows = '';
     
-    // Usar função específica para Brazilian Real, caso contrário usar função genérica
-    const rows = isBrazilianReal 
-        ? data.map(item => createBrazilianRealRow(item)).join('')
-        : data.map(item => createTableRow(item, isCurrency)).join('');
+    if (isBrazilianReal) {
+        // Header compacto estilo CME Group para Brazilian Real
+        const firstContract = data[0] || {};
+        // Extrair código GLOBEX do nome (pode ser "6LG6" ou "BRL/USD")
+        let globexCode = '6LG6';
+        if (firstContract.name) {
+            const globexMatch = firstContract.name.match(/(\d{1}[A-Z]{2}\d{1})/);
+            if (globexMatch) {
+                globexCode = globexMatch[1];
+            } else if (firstContract.name.length <= 6) {
+                globexCode = firstContract.name;
+            }
+        }
+        
+        const lastValue = firstContract.value || '0.0000';
+        const changeValue = firstContract.variation || '0.0000';
+        const changePercent = firstContract.percent || '0.00%';
+        const volume = firstContract.volume || '0';
+        const lastUpdate = firstContract.time || new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        
+        // Para Brazilian Real, usar o valor exatamente como está (sem formatação adicional)
+        // Garantir que tenha 4 casas decimais se for número
+        let lastDisplay = lastValue;
+        let realValue = null; // Valor convertido em reais (1/valor)
+        if (lastDisplay && !isNaN(parseFloat(lastDisplay))) {
+            const num = parseFloat(lastDisplay);
+            lastDisplay = num.toFixed(4);
+            // Calcular valor em reais: 1/valor
+            if (num > 0) {
+                realValue = (1 / num).toFixed(5);
+                console.log(`💰 Brazilian Real: LAST=${lastDisplay}, Valor em R$=${realValue}`);
+            }
+        }
+        
+        // Formatar CHANGE com percentual - garantir formato "-0.00035 (-0.19%)"
+        let changeDisplay = changeValue;
+        if (changeDisplay && !changeDisplay.includes('(') && changePercent) {
+            changeDisplay = `${changeDisplay} (${changePercent})`;
+        }
+        const changeClass = getVariationClass(changeValue);
+        
+        header = `
+            <div class="brazilian-real-summary">
+                <div class="br-summary-title">
+                    <h3>Brazilian Real</h3>
+                    <span class="br-subtitle">Futures and Options</span>
+                </div>
+                <div class="br-summary-metrics">
+                    <div class="br-metric">
+                        <span class="br-metric-label">GLOBEX CODE</span>
+                        <span class="br-metric-value globex-box">${globexCode}</span>
+                        <span class="br-info-icon">ℹ️</span>
+                    </div>
+                    <div class="br-metric">
+                        <span class="br-metric-label">LAST</span>
+                        <span class="br-metric-value">${lastDisplay}</span>
+                        ${realValue ? `<div class="br-real-value">R$ ${realValue}</div>` : ''}
+                    </div>
+                    <div class="br-metric">
+                        <span class="br-metric-label">CHANGE</span>
+                        <span class="br-metric-value ${changeClass}">${changeDisplay}</span>
+                    </div>
+                    <div class="br-metric">
+                        <span class="br-metric-label">VOLUME</span>
+                        <span class="br-metric-value">${volume}</span>
+                    </div>
+                </div>
+                <div class="br-summary-footer">
+                    <span>Last Updated ${lastUpdate}. Market data is delayed by at least 10 minutes.</span>
+                </div>
+            </div>
+            <div class="table-header-row brazilian-real-header">
+                <div>MONTH</div>
+                <div>OPTIONS</div>
+                <div>CHART</div>
+                <div>LAST</div>
+                <div>CHANGE</div>
+                <div>PRIOR SETTLE</div>
+                <div>OPEN</div>
+                <div>HIGH</div>
+                <div>LOW</div>
+            </div>
+        `;
+        rows = data.map((item, index) => createBrazilianRealRow(item, index)).join('');
+    } else if (isTreasuries) {
+        // Header específico para Treasuries - ordem igual ao Investing.com
+        header = `
+            <div class="table-header-row">
+                <div>Name</div>
+                <div>Yield</div>
+                <div>Prev.</div>
+                <div>High</div>
+                <div>Low</div>
+                <div>Chg.</div>
+                <div>Chg. %</div>
+                <div>Time</div>
+            </div>
+        `;
+        rows = data.map(item => createTableRow(item, isCurrency, isTreasuries)).join('');
+    } else {
+        // Header padrão para outras tabelas
+        header = `
+            <div class="table-header-row">
+                <div>Nome</div>
+                <div>Mês</div>
+                <div>Último</div>
+                <div>Máxima</div>
+                <div>Mínima</div>
+                <div>Variação</div>
+                <div>Var. %</div>
+                <div>Hora</div>
+            </div>
+        `;
+        rows = data.map(item => createTableRow(item, isCurrency, isTreasuries)).join('');
+    }
+    
     container.innerHTML = header + rows;
 }
 
@@ -305,8 +519,16 @@ function renderNoticias(data) {
 async function fetchData() {
     try {
         console.log('🔄 Buscando dados do dashboard...');
-        const response = await fetch('/api/finance/dashboard', {
-            credentials: 'include' // Incluir cookies para autenticação
+        // Adicionar timestamp único para evitar cache
+        const timestamp = new Date().getTime();
+        const response = await fetch(`/api/finance/dashboard?_t=${timestamp}`, {
+            credentials: 'include', // Incluir cookies para autenticação
+            cache: 'no-cache', // Evitar cache do navegador
+            headers: {
+                'Cache-Control': 'no-cache, no-store, must-revalidate',
+                'Pragma': 'no-cache',
+                'Expires': '0'
+            }
         });
         console.log('📡 Resposta recebida:', response.status, response.statusText);
         
@@ -322,6 +544,10 @@ async function fetchData() {
         }
         const data = await response.json();
         console.log('✅ Dados recebidos:', Object.keys(data));
+        console.log('📊 Treasuries recebidos:', data.treasuries ? data.treasuries.length : 0, 'itens');
+        if (data.treasuries && data.treasuries.length > 0) {
+            console.log('📊 Primeiro Treasury recebido no fetchData:', JSON.stringify(data.treasuries[0], null, 2));
+        }
         
         // Armazenar dados para pesquisa
         allAssetsData = {
@@ -347,16 +573,53 @@ async function fetchData() {
         if (data.dolarEmergentes) renderTable('dolar-emergentes-table', data.dolarEmergentes);
         if (data.dolarMundo) renderTable('dolar-mundo-table', data.dolarMundo);
         if (data.europa) renderTable('europa-table', data.europa);
-        if (data.treasuries) renderTable('treasuries-table', data.treasuries);
+        if (data.treasuries) {
+            console.log('📊 Renderizando Treasuries:', data.treasuries.length, 'itens');
+            console.log('📊 Primeiro Treasury recebido:', JSON.stringify(data.treasuries[0], null, 2));
+            renderTable('treasuries-table', data.treasuries);
+        }
         if (data.asiaOceania) renderTable('asia-oceania-table', data.asiaOceania);
         if (data.moedas) renderTable('moedas-table', data.moedas);
         if (data.dolarAmericas) renderTable('dolar-americas-table', data.dolarAmericas);
         if (data.criptomoedas) renderTable('criptomoedas-table', data.criptomoedas);
         
+        // Atualizar Dólar Cupom
+        if (data.dolarCupom) {
+            const valores = data.dolarCupom.valores || {};
+            
+            // DIF OPER CASADA
+            const difElement = document.getElementById('dolar-cupom-dif');
+            if (difElement && valores.difOperCasada) {
+                difElement.textContent = `R$ ${parseFloat(valores.difOperCasada).toFixed(2)}`;
+            }
+            
+            // CUPOM LIMPO
+            const limpoElement = document.getElementById('dolar-cupom-limpo');
+            if (limpoElement && valores.cupomLimpo) {
+                limpoElement.textContent = `R$ ${parseFloat(valores.cupomLimpo).toFixed(4)}`;
+            }
+            
+            // SPOT 2 DIAS
+            const spot2Element = document.getElementById('dolar-cupom-spot2');
+            if (spot2Element && valores.spot2Dias) {
+                spot2Element.textContent = `R$ ${parseFloat(valores.spot2Dias).toFixed(4)}`;
+            }
+            
+            // SPOT 1 DIA
+            const spot1Element = document.getElementById('dolar-cupom-spot1');
+            if (spot1Element && valores.spot1Dia) {
+                spot1Element.textContent = `R$ ${parseFloat(valores.spot1Dia).toFixed(4)}`;
+            }
+        }
+        
         // Atualizar timestamp
         const lastUpdate = document.getElementById('lastUpdate');
         if (lastUpdate) {
-            lastUpdate.textContent = `Atualizado: ${new Date().toLocaleTimeString('pt-BR')}`;
+            // Usar timestamp do servidor se disponível, senão usar timestamp local
+            const updateTime = data.lastUpdate ? 
+                new Date(data.lastUpdate).toLocaleTimeString('pt-BR') : 
+                new Date().toLocaleTimeString('pt-BR');
+            lastUpdate.textContent = `Atualizado: ${updateTime}`;
             lastUpdate.style.color = '#ffffff';
         }
         
@@ -654,11 +917,11 @@ document.addEventListener('DOMContentLoaded', () => {
     // Carregar dados iniciais imediatamente
     refreshData();
     
-    // Atualizar a cada 10 segundos (mais frequente)
+    // Atualizar a cada 3 segundos (tempo real)
     refreshInterval = setInterval(() => {
         console.log('🔄 Atualização automática...');
         refreshData();
-    }, 10000);
+    }, 3000);
     
     // Também atualizar quando a página ganha foco
     document.addEventListener('visibilitychange', () => {

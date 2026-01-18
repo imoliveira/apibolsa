@@ -270,6 +270,40 @@ body::before {
     margin: 0;
 }
 
+.dolar-cupom-info {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 8px 16px;
+    background: #f3f3f3;
+    border-radius: 4px;
+    margin-left: 24px;
+    border: 1px solid #d8dde6;
+    flex-wrap: wrap;
+}
+
+.dolar-cupom-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.dolar-cupom-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: #706e6b;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+.dolar-cupom-value {
+    font-size: 12px;
+    font-weight: 700;
+    color: #0176d3;
+    font-family: 'Courier New', monospace;
+    white-space: nowrap;
+}
+
 .secondary-nav-right {
     display: flex;
     align-items: center;
@@ -643,6 +677,123 @@ body::before {
     z-index: 10;
 }
 
+/* Header específico para Treasuries - ordem: Name, Yield, Prev., High, Low, Chg., Chg.%, Time */
+#treasuries-table .table-header-row {
+    grid-template-columns: 2fr 1fr 1fr 1fr 1fr 1.2fr 1.2fr 1fr;
+}
+
+/* Seção Brazilian Real - mais compacta */
+#section-brazilian-real {
+    max-width: 100%;
+}
+
+#section-brazilian-real .data-table {
+    max-height: 500px;
+    overflow-y: auto;
+}
+
+/* Header compacto estilo CME Group para Brazilian Real */
+.brazilian-real-summary {
+    background: #16325c; /* Azul escuro estilo CME Group */
+    color: #ffffff;
+    padding: 10px 14px;
+    border-radius: 4px 4px 0 0;
+    margin-bottom: 0;
+}
+
+.br-summary-title {
+    margin-bottom: 10px;
+}
+
+.br-summary-title h3 {
+    color: #ffffff;
+    font-size: 16px;
+    font-weight: 600;
+    margin: 0 0 2px 0;
+    line-height: 1.2;
+}
+
+.br-subtitle {
+    color: #ffffff;
+    font-size: 12px;
+    opacity: 0.9;
+}
+
+.br-summary-metrics {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    align-items: center;
+    margin-bottom: 6px;
+}
+
+.br-metric {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.br-metric-label {
+    font-size: 11px;
+    color: #ffffff;
+    opacity: 0.8;
+    text-transform: uppercase;
+}
+
+.br-metric-value {
+    font-size: 14px;
+    font-weight: 600;
+    color: #ffffff;
+}
+
+.br-metric-value.positive {
+    color: #2e844a;
+}
+
+.br-metric-value.negative {
+    color: #ea001e;
+}
+
+.br-real-value {
+    font-size: 20px;
+    font-weight: 700;
+    color: #ffffff;
+    margin-top: 4px;
+    display: block;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+
+.globex-box {
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    padding: 2px 8px;
+    border-radius: 3px;
+    font-family: 'Courier New', monospace;
+}
+
+.br-info-icon {
+    font-size: 14px;
+    cursor: pointer;
+    opacity: 0.8;
+}
+
+.br-summary-footer {
+    font-size: 10px;
+    color: #ffffff;
+    opacity: 0.7;
+    margin-top: 6px;
+}
+
+/* Header específico para Brazilian Real - estilo CME Group (azul escuro) */
+.brazilian-real-header {
+    grid-template-columns: 1.8fr 0.8fr 0.8fr 1fr 1.5fr 1fr 1fr 1fr 1fr;
+    background: #1a4d7a; /* Azul escuro estilo CME Group */
+    color: #ffffff;
+    border-bottom: 2px solid #0f3a5f;
+    font-size: 11px;
+    padding: 8px;
+}
+
 .table-row {
     display: grid;
     grid-template-columns: 2fr 0.8fr 1.2fr 1.2fr 1.2fr 1.2fr 1.2fr 1fr;
@@ -654,6 +805,98 @@ body::before {
     font-size: 13px;
 }
 
+/* Linhas específicas para Treasuries - ordem: Name, Yield, Prev., High, Low, Chg., Chg.%, Time */
+#treasuries-table .table-row {
+    grid-template-columns: 2fr 1fr 1fr 1fr 1fr 1.2fr 1.2fr 1fr;
+}
+
+/* Linhas específicas para Treasuries - ordem: Name, Yield, Prev., High, Low, Chg., Chg.%, Time */
+#treasuries-table .table-row {
+    grid-template-columns: 2fr 1fr 1fr 1fr 1fr 1.2fr 1.2fr 1fr;
+}
+
+/* Linhas específicas para Brazilian Real - estilo CME Group */
+.brazilian-real-row {
+    grid-template-columns: 1.8fr 0.8fr 0.8fr 1fr 1.5fr 1fr 1fr 1fr 1fr;
+    align-items: center;
+    padding: 8px;
+    font-size: 12px;
+}
+
+.cell-month {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.month-icon {
+    font-size: 14px;
+    opacity: 0.6;
+}
+
+.month-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.month-text {
+    font-weight: 500;
+    color: #16325c;
+    font-size: 12px;
+}
+
+.globex-code {
+    font-size: 10px;
+    color: #706e6b;
+    font-family: 'Courier New', monospace;
+}
+
+.cell-options {
+    display: flex;
+    justify-content: center;
+}
+
+.opt-button {
+    background: #0176d3;
+    color: #ffffff;
+    border: none;
+    padding: 4px 12px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 600;
+    cursor: pointer;
+    text-transform: uppercase;
+    transition: background 0.2s;
+}
+
+.opt-button:hover {
+    background: #014486;
+}
+
+.cell-chart {
+    display: flex;
+    justify-content: center;
+}
+
+.chart-icon {
+    font-size: 16px;
+    color: #0176d3;
+    cursor: pointer;
+}
+
+.brazilian-real-row.row-even {
+    background: #f8f9fa; /* Cinza claro para linhas pares */
+}
+
+.brazilian-real-row.row-odd {
+    background: #ffffff; /* Branco para linhas ímpares */
+}
+
+.brazilian-real-row:hover {
+    background: #e9ecef !important; /* Cinza mais escuro no hover */
+}
+
 .table-row:last-child {
     border-bottom: none;
 }
@@ -663,11 +906,6 @@ body::before {
     cursor: pointer;
 }
 
-.brazilian-real-row {
-    align-items: flex-start;
-    padding-top: 12px;
-    padding-bottom: 12px;
-}
 
 .table-cell {
     display: flex;
@@ -693,6 +931,12 @@ body::before {
     gap: 2px;
 }
 
+.cell-value-with-real {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+}
+
 .value-main {
     color: #3e3e3c;
     font-weight: 500;
@@ -704,6 +948,14 @@ body::before {
     font-weight: 400;
     font-size: 11px;
     font-family: 'Courier New', Courier, monospace;
+}
+
+.value-real {
+    color: #0176d3;
+    font-weight: 600;
+    font-size: 11px;
+    font-family: 'Courier New', Courier, monospace;
+    margin-top: 2px;
 }
 
 .cell-variation {

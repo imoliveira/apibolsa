@@ -44,6 +44,24 @@
     <nav class="secondary-nav">
         <div class="secondary-nav-container">
             <h1 class="page-title">Dashboard Financeiro</h1>
+            <div id="dolar-cupom-info" class="dolar-cupom-info">
+                <div class="dolar-cupom-item">
+                    <span class="dolar-cupom-label">DIF OPER CASADA:</span>
+                    <span id="dolar-cupom-dif" class="dolar-cupom-value">-</span>
+                </div>
+                <div class="dolar-cupom-item">
+                    <span class="dolar-cupom-label">CUPOM LIMPO:</span>
+                    <span id="dolar-cupom-limpo" class="dolar-cupom-value">-</span>
+                </div>
+                <div class="dolar-cupom-item">
+                    <span class="dolar-cupom-label">SPOT 2 DIAS:</span>
+                    <span id="dolar-cupom-spot2" class="dolar-cupom-value">-</span>
+                </div>
+                <div class="dolar-cupom-item">
+                    <span class="dolar-cupom-label">SPOT 1 DIA:</span>
+                    <span id="dolar-cupom-spot1" class="dolar-cupom-value">-</span>
+                </div>
+            </div>
             <div class="secondary-nav-right">
                 <ul class="secondary-nav-menu">
                     <li class="nav-item dropdown">
@@ -56,7 +74,7 @@
                     <li class="nav-item dropdown">
                         <a href="#" class="nav-link">Moedas <span class="dropdown-arrow">▼</span></a>
                         <ul class="dropdown-menu">
-                            <li><a href="#" onclick="return showSection('moedas')">Moedas / Cesta DX</a></li>
+                            <li><a href="#" onclick="return showSection('moedas')">Principais Índices Mundiais hoje</a></li>
                             <li><a href="#" onclick="return showSection('dolar-mundo')">Dólar x Mundo</a></li>
                             <li><a href="#" onclick="return showSection('dolar-emergentes')">Dólar x Emergentes</a></li>
                             <li><a href="#" onclick="return showSection('brazilian-real')">Brazilian Real (CME)</a></li>
@@ -99,12 +117,12 @@
     <div class="dashboard-container">
         <!-- Conteúdo Principal - Organizado por Seções/Menus -->
         <main class="main-content">
-            <!-- Seção: MOEDAS / CESTA DX -->
+            <!-- Seção: PRINCIPAIS ÍNDICES MUNDIAIS HOJE -->
             <section id="section-moedas" class="content-section">
                 <div class="section-header-content">
                     <h2>
-                        <a href="https://br.investing.com/currencies/single-currency-crosses" target="_blank" rel="noopener noreferrer" class="section-title-link">
-                            MOEDAS / CESTA DX
+                        <a href="https://br.investing.com/indices/major-indices" target="_blank" rel="noopener noreferrer" class="section-title-link">
+                            Principais Índices Mundiais hoje
                         </a>
                     </h2>
                 </div>
